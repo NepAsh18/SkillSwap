@@ -1,0 +1,485 @@
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { pageService } from "../api/pageService";
+import { useVideos } from "../hooks/useVideos";
+import { useBadge } from "../context/BadgeContext";
+
+// Layout Imports
+import AppLayout from "../components/layout/AppLayout";
+import Navbar from "../components/layout/Navbar";
+import Header from "../components/layout/Header";
+import Footer from "../components/layout/Footer";
+import GoldCard from "../components/layout/GoldCard";
+
+// Video Components Imports
+import VideoGrid from "../components/video/VideoGrid";
+import Spinner from "../components/common/Spinner";
+import ErrorBanner from "../components/common/ErrorBanner";
+
+// Badge Components Imports (from HomePage)
+import BadgePopup from "../components/ai/BadgePopup";
+
+// --- Home hero / badge config (from HomePage.jsx) ---
+const TIER_CONFIG = {
+  NOVICE:       { emoji: '🌱', color: '#7A7A9A', bg: '#F5F5F5',  label: 'Novice'       },
+  APPRENTICE:   { emoji: '🔧', color: '#4CAF82', bg: '#E8F8F0',  label: 'Apprentice'   },
+  PRACTITIONER: { emoji: '⚙️', color: '#2196F3', bg: '#E3F2FD',  label: 'Practitioner' },
+  EXPERT:       { emoji: '⭐', color: '#F5A623', bg: '#FFF3D0',  label: 'Expert'       },
+  MASTER:       { emoji: '👑', color: '#9C27B0', bg: '#F3E5F5',  label: 'Master'       },
+};
+
+const HOW_IT_WORKS = [
+  { icon: '👤', title: 'Complete your profile',  desc: 'Add your skills, education, and projects so the AI knows where to start.' },
+  { icon: '🤖', title: 'AI builds your test',    desc: 'Questions are generated specifically for your skill level — no generic quizzes.' },
+  { icon: '✍️', title: 'Answer in 45 minutes',   desc: 'A mix of MCQ, coding, and aptitude questions all in one timed session.' },
+  { icon: '🏅', title: 'Earn a verified badge',  desc: 'Your badge tier updates automatically and reflects peer feedback too.' },
+];
+
+const TIERS = [
+  { tier: 'NOVICE',       range: '0 – 39%'   },
+  { tier: 'APPRENTICE',   range: '40 – 59%'  },
+  { tier: 'PRACTITIONER', range: '60 – 74%'  },
+  { tier: 'EXPERT',       range: '75 – 89%'  },
+  { tier: 'MASTER',       range: '90 – 100%' },
+];
+
+const HoverCard = ({ children, style = {} }) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: '#FFFFFF',
+        borderRadius: 16,
+        border: '1px solid #E8E4D8',
+        padding: '22px 20px',
+        transition: 'box-shadow 0.2s, transform 0.2s',
+        boxShadow: hovered ? '0 8px 28px rgba(26,26,46,0.11)' : '0 1px 4px rgba(26,26,46,0.06)',
+        transform: hovered ? 'translateY(-3px)' : 'none',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+const BadgeCard = ({ badge, onRetake }) => {
+  const cfg = TIER_CONFIG[badge.tier] || TIER_CONFIG.NOVICE;
+  return (
+    <div style={{
+      background: '#FFFFFF',
+      borderRadius: 20,
+      border: `1.5px solid ${cfg.color}33`,
+      padding: 'clamp(18px, 3vw, 28px)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 20,
+      flexWrap: 'wrap',
+      boxShadow: '0 2px 12px rgba(26,26,46,0.07)',
+    }}>
+      <div style={{
+        width: 58, height: 58, borderRadius: 16,
+        background: cfg.bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '1.9rem', flexShrink: 0,
+      }}>
+        {cfg.emoji}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 700,
+          fontSize: '0.98rem', color: '#1A1A2E', marginBottom: 3,
+        }}>
+          Your badge — <span style={{ color: cfg.color }}>{cfg.label}</span>
+        </div>
+        <div style={{
+          fontFamily: 'Inter, sans-serif', fontSize: '0.82rem',
+          color: '#7A7A9A', display: 'flex', gap: 14, flexWrap: 'wrap',
+        }}>
+          <span>🎯 {badge.skill}</span>
+          <span>📊 Level {badge.currentLevel}</span>
+          <span>⚡ Avg {Math.round(badge.averageScore ?? 0)}%</span>
+          <span>🗂 {badge.sessionsCompleted} session{badge.sessionsCompleted !== 1 ? 's' : ''}</span>
+        </div>
+      </div>
+      <button
+        onClick={onRetake}
+        style={{
+          padding: '9px 20px', borderRadius: 10,
+          border: '1.5px solid #F5A623', background: '#FFF3D0',
+          color: '#D4891A', fontFamily: 'Sora, sans-serif',
+          fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+          whiteSpace: 'nowrap', transition: 'all 0.18s', flexShrink: 0,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = '#F5A623'; e.currentTarget.style.color = '#1A1A2E'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = '#FFF3D0'; e.currentTarget.style.color = '#D4891A'; }}
+      >
+        Retake →
+      </button>
+    </div>
+  );
+};
+
+// --- SkillSwap Home hero section, shown only for the "home" slug ---
+const HomeHero = ({ navigate }) => {
+  const { latestBadge } = useBadge();
+  const token = localStorage.getItem('token');
+  const isLoggedIn = !!token;
+
+  const handleAssessmentClick = () => {
+    if (!isLoggedIn) { navigate('/login', { state: { from: '/assessment' } }); return; }
+    navigate('/assessment');
+  };
+
+  return (
+    <div style={{ fontFamily: 'Inter, sans-serif' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Inter:wght@400;500;600&display=swap');
+      `}</style>
+
+      {/* Hero */}
+      <section style={{
+        maxWidth: 860, margin: '0 auto',
+        padding: 'clamp(52px,9vw,100px) 24px clamp(40px,6vw,72px)',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          background: '#FFF3D0', border: '1px solid #F5A623',
+          borderRadius: 99, padding: '6px 18px', marginBottom: 28,
+        }}>
+          <span style={{ fontSize: '0.88rem' }}>⚡</span>
+          <span style={{
+            fontFamily: 'Inter, sans-serif', fontSize: '0.8rem',
+            fontWeight: 600, color: '#D4891A', letterSpacing: '0.04em',
+          }}>
+            AI-powered skill assessment
+          </span>
+        </div>
+
+        <h1 style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 800,
+          fontSize: 'clamp(2rem,5.5vw,3.5rem)', color: '#1A1A2E',
+          letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 22,
+        }}>
+          Know exactly where<br />
+          <span style={{
+            background: 'linear-gradient(135deg,#F5A623 0%,#F7C45A 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>
+            your skills stand
+          </span>
+        </h1>
+
+        <p style={{
+          fontFamily: 'Inter, sans-serif', fontSize: 'clamp(0.95rem,2vw,1.1rem)',
+          color: '#5A5A7A', maxWidth: 520, margin: '0 auto 38px', lineHeight: 1.75,
+        }}>
+          Answer a personalised mix of MCQ, coding, and aptitude questions built from
+          your profile. Earn a verified badge and swap skills with confidence.
+        </p>
+
+        <button
+          onClick={handleAssessmentClick}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 10,
+            background: '#F5A623', color: '#1A1A2E', border: 'none',
+            borderRadius: 14,
+            padding: 'clamp(13px,2vw,17px) clamp(30px,4vw,44px)',
+            fontFamily: 'Sora, sans-serif', fontWeight: 700,
+            fontSize: 'clamp(0.95rem,2vw,1.05rem)', cursor: 'pointer',
+            boxShadow: '0 4px 20px rgba(245,166,35,0.38)', transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 8px 28px rgba(245,166,35,0.48)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(245,166,35,0.38)';
+          }}
+        >
+          {isLoggedIn ? 'Take AI Assessment' : 'Sign in to get assessed'}
+          <span style={{ fontSize: '1.1rem' }}>→</span>
+        </button>
+
+        {!isLoggedIn && (
+          <p style={{
+            marginTop: 12, fontSize: '0.8rem',
+            color: '#7A7A9A', fontFamily: 'Inter, sans-serif',
+          }}>
+            You need to be signed in to take the assessment
+          </p>
+        )}
+      </section>
+
+      {/* Badge card */}
+      {isLoggedIn && latestBadge && (
+        <section style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px 48px' }}>
+          <BadgeCard badge={latestBadge} onRetake={() => navigate('/assessment')} />
+        </section>
+      )}
+
+      {/* How it works */}
+      <section style={{ maxWidth: 860, margin: '0 auto', padding: '0 24px clamp(48px,7vw,80px)' }}>
+        <h2 style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 800,
+          fontSize: 'clamp(1.25rem,3vw,1.65rem)', color: '#1A1A2E',
+          letterSpacing: '-0.02em', marginBottom: 24,
+        }}>
+          How it works
+        </h2>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))',
+          gap: 16,
+        }}>
+          {HOW_IT_WORKS.map((step, i) => (
+            <HoverCard key={i}>
+              <div style={{ fontSize: '1.65rem', marginBottom: 12 }}>{step.icon}</div>
+              <div style={{
+                fontFamily: 'Sora, sans-serif', fontWeight: 700,
+                fontSize: '0.9rem', color: '#1A1A2E', marginBottom: 7, lineHeight: 1.3,
+              }}>
+                {step.title}
+              </div>
+              <div style={{
+                fontFamily: 'Inter, sans-serif', fontSize: '0.82rem',
+                color: '#7A7A9A', lineHeight: 1.6,
+              }}>
+                {step.desc}
+              </div>
+            </HoverCard>
+          ))}
+        </div>
+      </section>
+
+      {/* Badge tiers */}
+      <section style={{ maxWidth: 860, margin: '0 auto', padding: '0 24px clamp(56px,8vw,96px)' }}>
+        <h2 style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 800,
+          fontSize: 'clamp(1.25rem,3vw,1.65rem)', color: '#1A1A2E',
+          letterSpacing: '-0.02em', marginBottom: 24,
+        }}>
+          Badge tiers
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {TIERS.map(({ tier, range }) => {
+            const cfg = TIER_CONFIG[tier];
+            return (
+              <div key={tier} style={{
+                display: 'flex', alignItems: 'center', gap: 16,
+                background: '#FFFFFF', borderRadius: 14,
+                border: '1px solid #E8E4D8', padding: '14px 20px',
+              }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, background: cfg.bg,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.2rem', flexShrink: 0,
+                }}>
+                  {cfg.emoji}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontFamily: 'Sora, sans-serif', fontWeight: 700,
+                    fontSize: '0.88rem', color: cfg.color,
+                  }}>
+                    {cfg.label}
+                  </div>
+                  <div style={{
+                    fontFamily: 'Inter, sans-serif', fontSize: '0.78rem',
+                    color: '#7A7A9A', marginTop: 2,
+                  }}>
+                    Average score {range}
+                  </div>
+                </div>
+                {latestBadge?.tier === tier && (
+                  <span style={{
+                    fontFamily: 'Inter, sans-serif', fontSize: '0.72rem', fontWeight: 600,
+                    color: cfg.color, background: cfg.bg,
+                    padding: '3px 10px', borderRadius: 99, whiteSpace: 'nowrap',
+                  }}>
+                    Your tier
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <BadgePopup />
+    </div>
+  );
+};
+
+const DynamicPage = ({ defaultSlug = "home" }) => {
+  // --- 1. Dynamic Page Logic ---
+  const { slug } = useParams();
+  const navigate = useNavigate();
+  const currentSlug = slug || defaultSlug;
+  const isHome = currentSlug === "home";
+
+  const [pageData, setPageData] = useState(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    setPageLoading(true);
+
+    pageService
+      .getPageBySlug(currentSlug)
+      .then((data) => {
+        if (isMounted) {
+          setPageData(data);
+          setPageError(null);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error("DynamicPage fetch error:", err);
+          setPageError("We couldn't find this page, or it failed to load.");
+          setPageData(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setPageLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentSlug]);
+
+  // Helper: safely extract section content as a string
+  const getSectionContent = (content) => {
+    if (typeof content === "string") return content;
+    if (content && typeof content === "object" && content.body) {
+      return content.body;
+    }
+    if (content && typeof content === "object") {
+      return JSON.stringify(content, null, 2);
+    }
+    return "";
+  };
+
+  // --- 2. Browse Videos Logic ---
+  const { videos, isLoading: videosLoading, error: videosError, refetch } = useVideos();
+
+  return (
+    <AppLayout>
+      {/* Whale Blue & Mint Scrollbar */}
+      <style>{`
+        .page-scroll::-webkit-scrollbar { width: 8px; }
+        .page-scroll::-webkit-scrollbar-track { background: #0f172a; } 
+        .page-scroll::-webkit-scrollbar-thumb { background: #2dd4bf55; border-radius: 9999px; } 
+        .page-scroll::-webkit-scrollbar-thumb:hover { background: #2dd4bf; } 
+        .page-scroll { scrollbar-width: thin; scrollbar-color: #2dd4bf55 #0f172a; }
+        * { box-sizing: border-box; }
+      `}</style>
+
+      <Navbar />
+
+      {!isHome && (
+        <Header
+          title={pageData?.title || (pageLoading ? "Loading…" : "Explore Content")}
+          subtitle={pageData ? `/${pageData.slug}` : "Video Library"}
+        />
+      )}
+
+      <main className="page-scroll mx-auto w-full flex-1 overflow-y-auto bg-slate-900 min-h-screen">
+        {/* --- SKILLSWAP HOME HERO (only for the home slug) --- */}
+        {isHome && (
+          <div style={{ background: '#FFFBF0' }}>
+            <HomeHero navigate={navigate} />
+          </div>
+        )}
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+
+          {/* --- TOP: DYNAMIC CMS CONTENT (skipped on home, since home uses HomeHero) --- */}
+          {!isHome && pageLoading && (
+            <GoldCard>
+              <div className="text-center py-16">
+                <h2 className="text-2xl font-semibold text-teal-400 animate-pulse">
+                  Loading page content…
+                </h2>
+              </div>
+            </GoldCard>
+          )}
+
+          {!isHome && !pageLoading && pageError && (
+            <GoldCard>
+              <div className="text-center py-16">
+                <h2 className="text-3xl font-bold text-rose-400">Content not found</h2>
+                <p className="text-slate-300 mt-4 max-w-md mx-auto">{pageError}</p>
+              </div>
+            </GoldCard>
+          )}
+
+          {!isHome && !pageLoading && !pageError && pageData && pageData.sections?.length > 0 && (
+            <div className="grid gap-6 mb-12">
+              {pageData.sections.map((section, index) => (
+                <GoldCard key={section.id || `section-${index}`}>
+                  <div className="space-y-3">
+                    <h3 className="text-xl sm:text-2xl font-semibold text-teal-300">
+                      {section.title}
+                    </h3>
+                    <div className="text-slate-300 leading-7 whitespace-pre-wrap break-words">
+                      {getSectionContent(section.content)}
+                    </div>
+                  </div>
+                </GoldCard>
+              ))}
+            </div>
+          )}
+
+          {/* --- BOTTOM: VIDEO GRID INTEGRATION --- */}
+          {/* We use a subtle visual break to separate the text content from the videos */}
+          <div className="mt-8 pt-10 border-t border-slate-800 relative">
+            {/* Decorative background glow for the video section */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-teal-500/20 to-transparent"></div>
+
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <h2 className="text-3xl font-bold text-teal-400">Browse Videos</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  18+ titles are visible here but require age verification to play.
+                </p>
+              </div>
+            </div>
+
+            <div className="min-h-[400px]">
+              {videosLoading && (
+                <div className="flex justify-center items-center py-12">
+                  <Spinner label="Loading video library..." />
+                </div>
+              )}
+
+              {videosError && (
+                <div className="py-6">
+                  <ErrorBanner error={videosError} onRetry={refetch} />
+                </div>
+              )}
+
+              {!videosLoading && !videosError && (
+                <div className="animate-in fade-in duration-500">
+                  <VideoGrid videos={videos} />
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      <Footer />
+    </AppLayout>
+  );
+};
+
+export default DynamicPage;
