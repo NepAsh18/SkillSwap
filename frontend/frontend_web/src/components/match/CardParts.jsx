@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import {resolvePictureUrl} from "../../api/assertUrl"
 
 // Shared visual pieces used by both MatchProfileCard and SearchProfileCard.
 // Not exported as a page-level component on its own.
@@ -64,7 +65,7 @@ export function CardAvatar({ picture, name, username }) {
   return (
     <div className="flex items-center gap-3">
       <img
-        src={picture || `https://api.dicebear.com/7.x/initials/svg?seed=${name}`}
+        src={resolvePictureUrl(picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${name}`}
         alt=""
         className="w-12 h-12 rounded-full object-cover bg-ink/10"
       />

@@ -58,6 +58,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/home/public/**").permitAll()
                         .requestMatchers("/api/v1/home/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/committee/**").hasRole("COMMITTEE_MEMBER")
+                        .requestMatchers("/ws-chat/**").permitAll()
 
 
                         // Block everything else behind verification locks

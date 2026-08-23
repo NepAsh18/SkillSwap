@@ -7,9 +7,14 @@ export const pageService = {
     return response.data;
   },
 
-  
+  // Public: lightweight list of { id, slug, title } for nav/buttons — no auth required
+  getAllSlugs: async () => {
+    const response = await API.get('/home/public/pages');
+    return response.data;
+  },
+
   getAllPages: async () => {
-    const response = await API.get('/home/admin/pages'); 
+    const response = await API.get('/home/admin/pages');
     return response.data;
   },
 

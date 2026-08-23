@@ -11,7 +11,7 @@ import {
   updateProject,
   deleteProject,
 } from "../api/profileService";
-
+import { resolvePictureUrl } from "../api/assertUrl";
 
 const EDITABLE_FIELDS = [
   "name",
@@ -555,10 +555,7 @@ export default function ProfilePage() {
   }
 
  const avatarSrc =
-  avatarPreview ||
-  (profile.picture
-    ? `http://localhost:8080${profile.picture}`
-    : null);
+  avatarPreview || resolvePictureUrl(profile.picture);
   const initials = (profile.name || "?")
     .split(" ")
     .map((p) => p[0])

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useConnections } from "../../context/ConnectionsContext";
+import { resolvePictureUrl } from "../../api/assertUrl";
 
 // Persistent tray, not a fire-and-forget toast: incoming requests sit in the
 // bottom-right corner until the recipient acts (accept / decline). This
@@ -22,7 +23,7 @@ export default function RequestTray() {
             className="bg-surface rounded-xl shadow-xl shadow-black/30 p-3 flex items-center gap-3"
           >
             <img
-              src={req.user.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${req.user.name}`}
+              src={resolvePictureUrl(req.user.picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${req.user.name}`}
               alt=""
               className="w-9 h-9 rounded-full object-cover flex-shrink-0"
             />

@@ -21,5 +21,8 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-export default api;
+export function getAccessToken() {
+  return localStorage.getItem("token");
+}
 
+export default api;

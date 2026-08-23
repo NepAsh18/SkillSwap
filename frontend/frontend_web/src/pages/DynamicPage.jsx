@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
 import { pageService } from "../api/pageService";
+import {getMyProfile} from "../api/profileService";
 import { useVideos } from "../hooks/useVideos";
 import { useBadge } from "../context/BadgeContext";
 
@@ -128,10 +130,47 @@ const HomeHero = ({ navigate }) => {
   const token = localStorage.getItem('token');
   const isLoggedIn = !!token;
 
-  const handleAssessmentClick = () => {
-    if (!isLoggedIn) { navigate('/login', { state: { from: '/assessment' } }); return; }
-    navigate('/assessment');
-  };
+  const handleAssessmentClick = async () => {
+    if (!isLoggedIn) {
+        navigate('/login', {
+            state: { from: '/assessment' }
+        });
+        return;
+    }
+
+    try {
+        const profile = await getMyProfile();
+
+        const isProfileComplete =
+            profile?.bio?.trim() &&
+            profile?.skillsProficient?.trim() &&
+            profile?.skillsToLearn?.trim();
+
+        if (!isProfileComplete) {
+            toast.error(
+    "Please complete your profile before starting the assessment.",
+    {
+        duration: 2000,
+        position: "top-center",
+    }
+);
+
+setTimeout(() => {
+    navigate("/profile");
+}, 2000);
+
+            return;
+        }
+
+        navigate('/assessment');
+
+    } catch (error) {
+        console.error("Unable to verify profile:", error);
+
+        // Optional: don't allow assessment if profile lookup fails
+        return;
+    }
+};
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -296,7 +335,7 @@ const HomeHero = ({ navigate }) => {
                     Average score {range}
                   </div>
                 </div>
-                {latestBadge?.tier === tier && (
+                {isLoggedIn && latestBadge?.tier === tier && (
                   <span style={{
                     fontFamily: 'Inter, sans-serif', fontSize: '0.72rem', fontWeight: 600,
                     color: cfg.color, background: cfg.bg,
@@ -313,6 +352,211 @@ const HomeHero = ({ navigate }) => {
 
       <BadgePopup />
     </div>
+  );
+};
+
+// --- Slug nav buttons + blurred modal popup for browsing other pages ---
+const SlugExplorer = () => {
+  const [slugs, setSlugs] = useState([]);
+  const [slugsLoading, setSlugsLoading] = useState(true);
+
+  const [activeSlug, setActiveSlug] = useState(null); // slug currently open in modal
+  const [modalData, setModalData] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    pageService
+      .getAllSlugs()
+      .then((data) => {
+        if (isMounted) setSlugs(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error("Failed to load slugs:", err);
+        if (isMounted) setSlugs([]);
+      })
+      .finally(() => {
+        if (isMounted) setSlugsLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+  const openSlug = (slug) => {
+    setActiveSlug(slug);
+    setModalData(null);
+    setModalError(null);
+    setModalLoading(true);
+
+    pageService
+      .getPageBySlug(slug)
+      .then((data) => setModalData(data))
+      .catch((err) => {
+        console.error("Failed to load page:", err);
+        setModalError("We couldn't load this page.");
+      })
+      .finally(() => setModalLoading(false));
+  };
+
+  const closeModal = () => {
+    setActiveSlug(null);
+    setModalData(null);
+    setModalError(null);
+  };
+
+  // Close on Escape
+  useEffect(() => {
+    if (!activeSlug) return;
+    const onKeyDown = (e) => { if (e.key === "Escape") closeModal(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeSlug]);
+
+  const getSectionContent = (content) => {
+    if (typeof content === "string") return content;
+    if (content && typeof content === "object" && content.body) return content.body;
+    if (content && typeof content === "object") return JSON.stringify(content, null, 2);
+    return "";
+  };
+
+  if (!slugsLoading && slugs.length === 0) return null;
+
+  return (
+    <section style={{ maxWidth: 860, margin: '0 auto', padding: '0 24px clamp(40px,6vw,64px)' }}>
+      <h2 style={{
+        fontFamily: 'Sora, sans-serif', fontWeight: 800,
+        fontSize: 'clamp(1.1rem,2.6vw,1.4rem)', color: '#1A1A2E',
+        letterSpacing: '-0.02em', marginBottom: 18,
+      }}>
+        Explore pages
+      </h2>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {slugsLoading && (
+          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.85rem', color: '#7A7A9A' }}>
+            Loading pages…
+          </span>
+        )}
+        {!slugsLoading && slugs.map((p) => (
+          <button
+            key={p.id ?? p.slug}
+            onClick={() => openSlug(p.slug)}
+            style={{
+              fontFamily: 'Sora, sans-serif', fontWeight: 600, fontSize: '0.85rem',
+              color: '#1A1A2E', background: '#FFFFFF',
+              border: '1.5px solid #E8E4D8', borderRadius: 99,
+              padding: '9px 18px', cursor: 'pointer', transition: 'all 0.18s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = '#F5A623';
+              e.currentTarget.style.background = '#FFF3D0';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = '#E8E4D8';
+              e.currentTarget.style.background = '#FFFFFF';
+            }}
+          >
+            {p.title || p.slug}
+          </button>
+        ))}
+      </div>
+
+      {/* Blurred backdrop + modal */}
+      {activeSlug && (
+        <div
+          onClick={closeModal}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 300,
+            background: 'rgba(26,26,46,0.38)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#FFFFFF', borderRadius: 20,
+              boxShadow: '0 20px 60px rgba(26,26,46,0.25)',
+              width: 'min(640px, 100%)', maxHeight: '80vh',
+              overflowY: 'auto', padding: 'clamp(24px,4vw,36px)',
+              position: 'relative',
+            }}
+          >
+            <button
+              onClick={closeModal}
+              aria-label="Close"
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                width: 32, height: 32, borderRadius: 10,
+                border: '1px solid #E8E4D8', background: '#FFFFFF',
+                color: '#7A7A9A', fontSize: '1.1rem', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              ×
+            </button>
+
+            {modalLoading && (
+              <div style={{ textAlign: 'center', padding: '40px 0', fontFamily: 'Inter, sans-serif', color: '#7A7A9A' }}>
+                Loading…
+              </div>
+            )}
+
+            {!modalLoading && modalError && (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <h3 style={{ fontFamily: 'Sora, sans-serif', fontWeight: 700, color: '#1A1A2E' }}>
+                  Content not found
+                </h3>
+                <p style={{ fontFamily: 'Inter, sans-serif', color: '#7A7A9A', marginTop: 8 }}>
+                  {modalError}
+                </p>
+              </div>
+            )}
+
+            {!modalLoading && !modalError && modalData && (
+              <>
+                <h3 style={{
+                  fontFamily: 'Sora, sans-serif', fontWeight: 800,
+                  fontSize: '1.4rem', color: '#1A1A2E', marginBottom: 4, paddingRight: 32,
+                }}>
+                  {modalData.title}
+                </h3>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem', color: '#7A7A9A', marginBottom: 20 }}>
+                  /{modalData.slug}
+                </p>
+
+                {modalData.sections?.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    {modalData.sections.map((section, i) => (
+                      <div key={section.id || i}>
+                        <h4 style={{
+                          fontFamily: 'Sora, sans-serif', fontWeight: 700,
+                          fontSize: '1rem', color: '#1A1A2E', marginBottom: 6,
+                        }}>
+                          {section.title}
+                        </h4>
+                        <div style={{
+                          fontFamily: 'Inter, sans-serif', fontSize: '0.9rem',
+                          color: '#5A5A7A', lineHeight: 1.7, whiteSpace: 'pre-wrap',
+                        }}>
+                          {getSectionContent(section.content)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontFamily: 'Inter, sans-serif', color: '#7A7A9A' }}>
+                    This page has no content yet.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 };
 
@@ -396,13 +640,14 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
         {isHome && (
           <div style={{ background: '#FFFBF0' }}>
             <HomeHero navigate={navigate} />
+            <SlugExplorer />
           </div>
         )}
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
 
-          {/* --- TOP: DYNAMIC CMS CONTENT (skipped on home, since home uses HomeHero) --- */}
-          {!isHome && pageLoading && (
+          {/* --- TOP: DYNAMIC CMS CONTENT (now shown for ALL slugs, including home) --- */}
+          {pageLoading && (
             <GoldCard>
               <div className="text-center py-16">
                 <h2 className="text-2xl font-semibold text-teal-400 animate-pulse">
@@ -412,7 +657,7 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
             </GoldCard>
           )}
 
-          {!isHome && !pageLoading && pageError && (
+          {!pageLoading && pageError && (
             <GoldCard>
               <div className="text-center py-16">
                 <h2 className="text-3xl font-bold text-rose-400">Content not found</h2>
@@ -421,7 +666,7 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
             </GoldCard>
           )}
 
-          {!isHome && !pageLoading && !pageError && pageData && pageData.sections?.length > 0 && (
+          {!pageLoading && !pageError && pageData && pageData.sections?.length > 0 && (
             <div className="grid gap-6 mb-12">
               {pageData.sections.map((section, index) => (
                 <GoldCard key={section.id || `section-${index}`}>

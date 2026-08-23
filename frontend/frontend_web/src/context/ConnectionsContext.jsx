@@ -12,6 +12,7 @@ import {
   markNotificationRead as apiMarkNotificationRead,
   markAllNotificationsRead as apiMarkAllNotificationsRead,
 } from "../api/connections";
+import { resolvePictureUrl } from "../api/assertUrl";
 
 const ConnectionsContext = createContext(null);
 
@@ -31,7 +32,7 @@ function toNested(req) {
       userId: req.otherUserId,
       name: req.otherUserName,
       username: req.otherUserUsername,
-      picture: req.otherUserPicture,
+       picture: resolvePictureUrl(req.otherUserPicture),
     },
   };
 }
@@ -245,6 +246,21 @@ export function ConnectionsProvider({ children }) {
     await apiMarkAllNotificationsRead();
   }, []);
 
+  const getConnectionStatus = useCallback(
+  (userId) => {
+    if (connections.some((c) => c.user?.userId === userId)) {
+      return "accepted";
+    }
+
+    if (sentRequests[userId]) {
+      return sentRequests[userId];
+    }
+
+    return null;
+  },
+  [connections, sentRequests]
+);
+
   const value = {
     connections,
     sentRequests,
@@ -256,6 +272,7 @@ export function ConnectionsProvider({ children }) {
     cancelSentRequest,
     acceptIncoming,
     declineIncoming,
+     getConnectionStatus,
     markNotificationRead,
     markAllNotificationsRead,
     refreshAll,

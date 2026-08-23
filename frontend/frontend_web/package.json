@@ -10,6 +10,7 @@
     "dev": "vite --host"
   },
   "dependencies": {
+    "@stomp/stompjs": "^7.3.0",
     "@tailwindcss/vite": "^4.2.4",
     "axios": "^1.17.0",
     "bootstrap": "^5.3.8",
@@ -23,6 +24,7 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.17.0",
     "react-toastify": "^11.1.0",
+    "sockjs-client": "^1.6.1",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {

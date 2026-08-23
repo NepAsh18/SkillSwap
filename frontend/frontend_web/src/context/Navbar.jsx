@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import NotificationBell from './NotificationBell';
+import NotificationBell from '../components/layout/NotificationBell';
 
 const Logo = () => (
   <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>

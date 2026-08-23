@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useConnections } from "../../context/ConnectionsContext";
+import { resolvePictureUrl } from "../../api/assertUrl";
 
 export default function ProfileModal({ user, onClose }) {
-  const { sentRequests, sendRequest, cancelSentRequest } = useConnections();
-  const status = sentRequests[user.userId];
+  const {  sendRequest, cancelSentRequest, getConnectionStatus } = useConnections();
+ const status = getConnectionStatus(user.userId);
 
   return (
     <AnimatePresence>
@@ -32,7 +33,7 @@ export default function ProfileModal({ user, onClose }) {
 
           <div className="flex items-center gap-4">
             <img
-              src={user.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`}
+              src={ user?.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`}
               alt=""
               className="w-16 h-16 rounded-full object-cover"
             />

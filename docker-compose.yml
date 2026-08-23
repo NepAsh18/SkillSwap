@@ -1,0 +1,131 @@
+version: "3.9"
+
+services:
+
+  backend:
+    # 1. Swap the Dockerfile build for a raw Maven image for live development
+    image: maven:3.9.6-eclipse-temurin-21
+    container_name: springboot_app
+    # 2. Set the working directory inside the container
+    working_dir: /app
+    
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/skilldb
+      SPRING_DATASOURCE_USERNAME: Jaggu
+      SPRING_DATASOURCE_PASSWORD: Jayesh@123
+      # Appending your CORS property here so your backend knows your frontend's URL
+      APP_CORS_FRONT_END_URL: http://localhost:5173
+      BACKFILL_SEARCH_INDEX: "true"
+     
+    networks:
+      - app-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # 3. Mount your local backend source code directly into the container
+      - ./backend/spring_framework/v2:/app
+      # 4. Cache your Maven dependencies locally on your machine so startups are fast
+      - ~/.m2:/root/.m2
+    # 5. Tell the container to boot your application using the Maven plugin
+   
+    command: >
+      bash -c "apt-get update && apt-get install -y ffmpeg && mvn spring-boot:run"
+    
+    
+  frontend:
+    build:
+      context: ./frontend/frontend_web
+    container_name: react_app
+    ports:
+      -  "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - app-net
+    volumes:
+      - ./frontend/frontend_web:/app  
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true  
+    command: npm run dev
+     
+
+  postgres:
+    image: postgres:16
+    container_name: app-postgres
+    environment:
+      POSTGRES_DB: skilldb
+      POSTGRES_USER: Jaggu
+      POSTGRES_PASSWORD: Jayesh@123
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Jaggu -d skilldb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
+      
+  mongodb:
+    image: mongo:latest
+    container_name: app-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ai_chat
+      MONGO_INITDB_ROOT_PASSWORD: jayesh
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --username ai_chat --password jayesh --authenticationDatabase admin --eval 'db.runCommand({ping: 1})'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5   
+      
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.2
+    container_name: app-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - cluster.name=matchmaker
+      - node.name=matchmaker-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    networks:
+      - app-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fs http://localhost:9200/_cluster/health || exit 1"
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+     
+
+volumes:
+  pg_data:
+  mongo_data:
+  elastic_data:
+
+networks:
+  app-net:
+    driver: bridge

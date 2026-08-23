@@ -3,22 +3,44 @@ import { useState } from "react";
 import { useConnections } from "../../context/ConnectionsContext";
 import ProfileModal from "./ProfileModal";
 import { SkillRow, ConnectButton, CardAvatar } from "./CardParts";
+import { resolvePictureUrl } from "../../api/assertUrl";
 
 // Expects a MatchResultDto from /discover/matches:
 // { userId, username, name, picture, topBadgeTier, finalScore, breakdown,
-//   adjacencyStrength, skillsProficient?, skillsToLearn? }
-//
-// Note: MatchResultDto from the backend doesn't currently carry
-// skillsProficient/skillsToLearn or bio — only userId/username/name/picture/
-// topBadgeTier/finalScore/breakdown/adjacencyStrength. If you want skill
-// chips and bio shown on match cards, add those fields to MatchResultDto
-// server-side; until then this card degrades gracefully without them.
+//   adjacencyStrength, skillsProficient?, skillsToLearn?, bio? }
+
 export default function MatchProfileCard({ user }) {
   const [open, setOpen] = useState(false);
-  const { sentRequests, sendRequest, cancelSentRequest } = useConnections();
-  const status = sentRequests[user.userId];
 
-  const isExactMatch = user.adjacencyStrength >= 1.0;
+  const {
+    connections,
+    sentRequests,
+    sendRequest,
+    cancelSentRequest,
+  } = useConnections();
+
+  /*
+   * Accepted connection is determined from the actual connections list.
+   * Sent requests only determine whether a request is pending.
+   */
+  const isConnected = connections.some(
+    (connection) => connection?.user?.userId === user?.userId
+  );
+
+  const status = isConnected
+    ? "accepted"
+    : sentRequests[user?.userId] || undefined;
+
+  /*
+   * Resolve the backend picture URL before passing it to CardAvatar.
+   */
+  const avatarSrc =
+    resolvePictureUrl(user?.picture) ||
+    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+      user?.name || "?"
+    )}`;
+
+  const isExactMatch = user?.adjacencyStrength >= 1.0;
 
   return (
     <>
@@ -29,13 +51,19 @@ export default function MatchProfileCard({ user }) {
         className="text-left w-full bg-surface rounded-2xl p-4 shadow-lg shadow-black/20 flex flex-col gap-3"
       >
         <div className="flex items-center gap-3">
-          <CardAvatar picture={user.picture} name={user.name} username={user.username} />
+          <CardAvatar
+            picture={avatarSrc}
+            name={user?.name}
+            username={user?.username}
+          />
+
           <div className="ml-auto flex flex-col items-end gap-1">
-            {user.topBadgeTier && (
+            {user?.topBadgeTier && (
               <span className="text-[10px] uppercase tracking-wide font-medium text-muted bg-ink/5 px-2 py-1 rounded-full whitespace-nowrap">
                 {user.topBadgeTier}
               </span>
             )}
+
             {!isExactMatch && (
               <span className="text-[10px] font-medium text-learn bg-learn/10 px-2 py-1 rounded-full whitespace-nowrap">
                 Related skill
@@ -44,10 +72,23 @@ export default function MatchProfileCard({ user }) {
           </div>
         </div>
 
-        {user.bio && <p className="text-sm text-muted line-clamp-2">{user.bio}</p>}
+        {user?.bio && (
+          <p className="text-sm text-muted line-clamp-2">
+            {user.bio}
+          </p>
+        )}
 
-        <SkillRow label="Teaches" skills={user.skillsProficient} color="teach" />
-        <SkillRow label="Wants to learn" skills={user.skillsToLearn} color="learn" />
+        <SkillRow
+          label="Teaches"
+          skills={user?.skillsProficient}
+          color="teach"
+        />
+
+        <SkillRow
+          label="Wants to learn"
+          skills={user?.skillsToLearn}
+          color="learn"
+        />
 
         <ConnectButton
           status={status}
@@ -62,7 +103,12 @@ export default function MatchProfileCard({ user }) {
         />
       </motion.button>
 
-      {open && <ProfileModal user={user} onClose={() => setOpen(false)} />}
+      {open && (
+        <ProfileModal
+          user={user}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }

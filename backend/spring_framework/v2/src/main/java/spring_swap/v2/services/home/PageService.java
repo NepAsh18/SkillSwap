@@ -126,4 +126,11 @@ public class PageService {
                 .map(pageMapper::toResponseDto)
                 .collect(Collectors.toList());
     }
+
+    @Transactional(readOnly = true)
+    public List<PageSummaryDTO> getAllSlugs() {
+        return pageRepository.findAll().stream()
+                .map(p -> new PageSummaryDTO(p.getId(), p.getSlug(), p.getTitle()))
+                .collect(Collectors.toList());
+    }
 }

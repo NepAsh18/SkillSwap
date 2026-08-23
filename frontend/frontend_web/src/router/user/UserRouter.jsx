@@ -7,16 +7,20 @@ import WatchPage from "../../pages/WatchPage";
 import AssessmentPage from '../../pages/AssessmentPage';
 import DiscoverPage from "../../pages/DiscoverPage"
 import ConnectionsPage from "../../pages/ConnectionsPage"
+import ChatPage from  "../../pages/ChatPage"
 
 
 export const UserRouter = (
   <>
+   <Route path="/dynamicpage" element={<DynamicPage />} />
+   <Route path="/videos/:videoUuid" element={<WatchPage />} />
   
     <Route element={<ProtectedRoute allowedRoles={['ROLE_USER']} />}>
-      <Route path="/dynamicpage" element={<DynamicPage />} />
-      <Route path="/videos/:videoUuid" element={<WatchPage />} />
+      
+      
       <Route path="/discover" element={<DiscoverPage />} />
-       <Route path="/connection" element={<ConnectionsPage />} />
+       <Route path="/connections" element={<ConnectionsPage />} />
+        <Route path="/chats/:chatId" element={<ChatPage />} />
       
     </Route>
 

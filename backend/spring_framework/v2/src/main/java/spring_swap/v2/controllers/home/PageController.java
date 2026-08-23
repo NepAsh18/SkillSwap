@@ -61,4 +61,10 @@ public class PageController {
         pageService.deletePage(id);
         return ResponseEntity.noContent().build();
     }
+
+
+    @GetMapping("/public/pages")
+    public ResponseEntity<List<PageSummaryDTO>> getAllSlugs() {
+        return ResponseEntity.ok(pageService.getAllSlugs());
+    }
 }

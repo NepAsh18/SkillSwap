@@ -1,5 +1,5 @@
 import { useConnections } from "../../context/ConnectionsContext";
-
+import { resolvePictureUrl } from "../../api/assertUrl";
 export default function ConnectionsList() {
   const { connections } = useConnections();
 
@@ -17,7 +17,7 @@ export default function ConnectionsList() {
             className="bg-surface rounded-xl p-3 flex items-center gap-3"
           >
             <img
-              src={c.user.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${c.user.name}`}
+              src={resolvePictureUrl(c.user.picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${c.user.name}`}
               alt=""
               className="w-10 h-10 rounded-full object-cover"
             />
