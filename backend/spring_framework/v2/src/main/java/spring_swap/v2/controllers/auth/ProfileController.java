@@ -94,6 +94,11 @@ public class ProfileController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/{userId}")
+    public ResponseEntity<PublicProfileResponse> getPublicProfile(@PathVariable UUID userId) {
+        return ResponseEntity.ok(profileService.getPublicProfile(userId));
+    }
+
     private UUID currentUserId(Authentication authentication) {
         return (UUID) authentication.getPrincipal();
     }

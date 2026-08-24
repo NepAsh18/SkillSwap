@@ -280,3 +280,55 @@ export const downloadChatMedia = async (mediaUrl, fileName) => {
     throw error;
   }
 };
+
+
+
+export const scheduleCall = async (chatId, { title, scheduledAt }) => {
+  try {
+    const response = await api.post(`/chats/${chatId}/events`, { title, scheduledAt });
+    return response.data;
+  } catch (error) {
+    console.error('Error scheduling call:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const fetchScheduledEvents = async (chatId) => {
+  try {
+    const response = await api.get(`/chats/${chatId}/events`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching scheduled events:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const joinScheduledEvent = async (chatId, eventId) => {
+  try {
+    const response = await api.post(`/chats/${chatId}/events/${eventId}/join`);
+    return response.data; // includes jitsiRoomName once STARTED
+  } catch (error) {
+    console.error('Error joining call:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const markEventEnded = async (chatId, eventId) => {
+  try {
+    const response = await api.post(`/chats/${chatId}/events/${eventId}/end`);
+    return response.data;
+  } catch (error) {
+    console.error('Error marking call ended:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const cancelScheduledEvent = async (chatId, eventId) => {
+  try {
+    const response = await api.delete(`/chats/${chatId}/events/${eventId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error canceling call:', error.response?.data || error.message);
+    throw error;
+  }
+};

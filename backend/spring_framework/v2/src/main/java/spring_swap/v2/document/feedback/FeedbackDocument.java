@@ -31,5 +31,10 @@ public class FeedbackDocument {
 
     private double weightApplied;
 
+
+
+    private String chatId;
+    private String scheduledEventId;
+
     private Instant createdAt;
 }

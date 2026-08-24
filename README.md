@@ -149,29 +149,7 @@ The project may require configuration for:
 - Ollama
 - Other external services
 
-Do not commit passwords, API keys, JWT secrets, or other sensitive information to GitHub.
 
-## Git Setup
-
-If the project is being initialized locally:
-
-    git init
-
-    git add .
-
-    git commit -m "chore: initialize project"
-
-Add the GitHub repository:
-
-    git remote add origin https://github.com/NepAsh18/SkillSwap.git
-
-Set the main branch:
-
-    git branch -M main
-
-Push the project:
-
-    git push -u origin main
 
 ## Development
 

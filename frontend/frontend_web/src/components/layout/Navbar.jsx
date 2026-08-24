@@ -80,6 +80,7 @@ const Navbar = () => {
             Discover
           </Link>
         )}
+    
 
         {isAuthenticated && (
           <Link
@@ -92,6 +93,14 @@ const Navbar = () => {
                 {pendingCount > 9 ? "9+" : pendingCount}
               </span>
             )}
+          </Link>
+        )}
+         {isAuthenticated && (
+          <Link
+            to="/feedback"
+            className="hover:text-slate-900 transition-colors"
+          >
+            Feedback
           </Link>
         )}
 

@@ -108,3 +108,14 @@ export const deleteProject = async (id) => {
     throw error;
   }
 };
+
+
+export const getPublicProfile = async (userId) => {
+  try {
+    const response = await api.get(`/profiles/${userId}`);
+    return response.data; // PublicProfileResponse
+  } catch (error) {
+    console.error('Error fetching public profile:', error.response?.data || error.message);
+    throw error;
+  }
+};

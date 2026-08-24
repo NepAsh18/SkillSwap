@@ -10,7 +10,7 @@ import {
   addChatMember as addChatMemberApi,
   removeChatMember as removeChatMemberApi,
 } from "../api/chat";
-import { getMyProfile } from "../api/profileService"; // adjust path if your profile.js lives elsewhere
+import { getMyProfile } from "../api/profileService"; 
 import {
   connectChatSocket,
   disconnectChatSocket,

@@ -4,14 +4,23 @@ import MessageBubble from "./MessageBubble";
 import MessageComposer from "./MessageComposer";
 import AddMemberModal from "./AddMemberModal";
 import FilesPanel from "./FilesPanel";
+import CallBanner from "./CallBanner";
+import ScheduleCallModal from "./ScheduleCallModal";
+import CallModal from "./CallModal";
+import PostCallFeedbackModal from "../feedback/PostCallFeedbackModal";
 
 export default function ChatThread({ chatId, onBack }) {
-  const { chats, loading: chatsLoading, messages, typingUsers, openChat, currentUserId, deleteChat, leaveGroup } = useChat();
+  const { chats, loading: chatsLoading, messages, typingUsers, openChat, currentUserId, currentUserName, deleteChat, leaveGroup } = useChat();
   const bottomRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(null); // null | "delete" | "leave"
   const [showAddMember, setShowAddMember] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [activeCallEvent, setActiveCallEvent] = useState(null);
+  const [callRefreshKey, setCallRefreshKey] = useState(0);
+  const [feedbackTargets, setFeedbackTargets] = useState(null);
+  const [feedbackEventId, setFeedbackEventId] = useState(null);
   const chat = chats.find((c) => c.id === chatId);
 
   useEffect(() => {
@@ -58,6 +67,33 @@ export default function ChatThread({ chatId, onBack }) {
     }
   };
 
+  // Who gets a feedback card once the call ends — every other participant,
+  // excluding yourself. GROUP pulls from participantIds + the participants
+  // name/picture map; DIRECT falls back to the single otherUser* fields
+  // since DIRECT chats don't carry a participants map at all.
+  const buildFeedbackTargets = () => {
+    if (isGroup) {
+      return (chat?.participantIds || [])
+        .filter((id) => id !== currentUserId)
+        .map((id) => ({
+          userId: id,
+          name: chat?.participants?.[id]?.name || "Member",
+          picture: chat?.participants?.[id]?.picture,
+        }));
+    }
+    return chat?.otherUserId
+      ? [{ userId: chat.otherUserId, name: chat.otherUserName, picture: chat.otherUserPicture }]
+      : [];
+  };
+
+  const handleCallEnded = (endedEvent) => {
+    const targets = buildFeedbackTargets();
+    if (targets.length > 0) {
+      setFeedbackTargets(targets);
+      setFeedbackEventId(endedEvent.id);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full relative">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 flex-shrink-0">
@@ -83,6 +119,16 @@ export default function ChatThread({ chatId, onBack }) {
         >
           <FilesIcon />
         </button>
+
+        {(!isGroup || isLeader) && (
+          <button
+            onClick={() => setShowScheduleModal(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+            title="Schedule a call"
+          >
+            <CalendarIcon />
+          </button>
+        )}
 
         <div className="relative">
           <button
@@ -134,6 +180,15 @@ export default function ChatThread({ chatId, onBack }) {
         </div>
       </div>
 
+      <CallBanner
+        chatId={chatId}
+        currentUserId={currentUserId}
+        isLeader={isLeader}
+        isGroup={isGroup}
+        refreshKey={callRefreshKey}
+        onOpenCall={(event) => setActiveCallEvent(event)}
+      />
+
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
         {messages.length === 0 ? (
           <p className="text-sm text-slate-400 text-center mt-10">No messages yet — say hello 👋</p>
@@ -170,6 +225,36 @@ export default function ChatThread({ chatId, onBack }) {
 
       {showAddMember && <AddMemberModal chat={chat} onClose={() => setShowAddMember(false)} />}
       {filesOpen && <FilesPanel chatId={chatId} onClose={() => setFilesOpen(false)} />}
+
+      {showScheduleModal && (
+        <ScheduleCallModal
+          chatId={chatId}
+          onClose={() => setShowScheduleModal(false)}
+          onScheduled={() => setCallRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {activeCallEvent && (
+        <CallModal
+          chatId={chatId}
+          event={activeCallEvent}
+          currentUserName={currentUserName}
+          onClose={() => setActiveCallEvent(null)}
+          onCallEnded={handleCallEnded}
+        />
+      )}
+
+      {feedbackTargets && (
+        <PostCallFeedbackModal
+          targets={feedbackTargets}
+          chatId={chatId}
+          scheduledEventId={feedbackEventId}
+          onClose={() => {
+            setFeedbackTargets(null);
+            setFeedbackEventId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -221,6 +306,15 @@ function FilesIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
     </svg>
   );
 }

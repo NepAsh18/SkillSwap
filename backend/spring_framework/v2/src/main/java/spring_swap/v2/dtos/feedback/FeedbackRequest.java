@@ -23,5 +23,7 @@ public class FeedbackRequest {
     @Min(1) @Max(5)
     private int stars;
 
-    private String comment;   // optional
+    private String comment;
+    private String chatId;
+    private String scheduledEventId;// optional
 }

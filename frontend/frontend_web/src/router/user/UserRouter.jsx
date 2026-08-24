@@ -8,6 +8,7 @@ import AssessmentPage from '../../pages/AssessmentPage';
 import DiscoverPage from "../../pages/DiscoverPage"
 import ConnectionsPage from "../../pages/ConnectionsPage"
 import ChatPage from  "../../pages/ChatPage"
+import FeedbackPage from "../../pages/FeedbackPage"
 
 
 export const UserRouter = (
@@ -21,6 +22,8 @@ export const UserRouter = (
       <Route path="/discover" element={<DiscoverPage />} />
        <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/chats/:chatId" element={<ChatPage />} />
+         <Route path="feedback" element={<FeedbackPage />} />
+      
       
     </Route>
 

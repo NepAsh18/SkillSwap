@@ -74,6 +74,8 @@ public class FeedbackService {
                 .stars(req.getStars())
                 .comment(req.getComment())
                 .weightApplied(weight)
+                .chatId(req.getChatId())
+                .scheduledEventId(req.getScheduledEventId())
                 .createdAt(Instant.now())
                 .build();
 

@@ -118,4 +118,16 @@ public class ProfileService {
             throw new RuntimeException("Failed to store file.", e);
         }
     }
+
+    @Transactional(readOnly = true)
+    public spring_swap.v2.dtos.auth.PublicProfileResponse getPublicProfile(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User profile requested does not exist."));
+        return spring_swap.v2.dtos.auth.PublicProfileResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .username(user.getUsername())
+                .picture(user.getPicture())
+                .build();
+    }
 }
