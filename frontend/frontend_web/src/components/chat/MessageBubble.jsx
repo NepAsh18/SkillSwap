@@ -97,7 +97,7 @@ export default function MessageBubble({ message, isOwn, chatId, chat, allMessage
       {showSenderLabel && (
         <img
           src={
-            sender?.picture ||
+            resolveMediaUrl(sender?.picture) ||
             `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(sender?.name || "?")}`
           }
           alt=""
@@ -113,11 +113,11 @@ export default function MessageBubble({ message, isOwn, chatId, chat, allMessage
           onKeyDown={(e) => {
             if (!message.deleted && (e.key === "Enter" || e.key === " ")) openMenu(e);
           }}
-          className={`text-left rounded-2xl px-3.5 py-2 transition-transform active:scale-[0.98] ${
+          className={`text-left rounded-2xl px-3.5 py-2 transition-all duration-150 active:scale-[0.98] ${
             message.deleted
               ? "bg-slate-50 text-slate-400 italic border border-slate-100 rounded-br-sm cursor-default"
               : isOwn
-              ? "bg-teal-500 text-white rounded-br-sm cursor-pointer"
+              ? "bg-teal-500 text-white rounded-br-sm cursor-pointer shadow-sm shadow-teal-500/15"
               : "bg-slate-100 text-slate-800 rounded-bl-sm cursor-pointer"
           }`}
         >
@@ -234,7 +234,7 @@ function MessageActionMenu({ isOwn, onClose, onReply, onDelete, onReact }) {
     <>
       <div className="fixed inset-0 z-30" onClick={onClose} />
       <div
-        className={`absolute z-40 bottom-full mb-1 bg-white border border-slate-100 rounded-2xl shadow-lg overflow-hidden ${
+        className={`absolute z-40 bottom-full mb-1.5 bg-white border border-slate-100 rounded-2xl shadow-lg shadow-slate-900/[0.08] overflow-hidden ${
           isOwn ? "right-0" : "left-0"
         }`}
       >
@@ -243,7 +243,7 @@ function MessageActionMenu({ isOwn, onClose, onReply, onDelete, onReact }) {
             <button
               key={emoji}
               onClick={() => onReact(emoji)}
-              className="text-lg w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-50 transition-colors"
+              className="text-lg w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-50 hover:scale-110 active:scale-95 transition-all duration-150"
             >
               {emoji}
             </button>

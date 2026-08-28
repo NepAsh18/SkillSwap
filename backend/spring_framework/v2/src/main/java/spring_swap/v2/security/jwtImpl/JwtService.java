@@ -30,11 +30,15 @@ public class JwtService {
     private final long refreshTtlSeconds;
     private final String issuer;
 
+    @Getter
+    private final long preAuthTtlSeconds;
+
     public JwtService(
             @Value("${security.jwt.secret}") String secret,
             @Value("${security.jwt.access-ttl-seconds:600}") long accessTtlSeconds,
             @Value("${security.jwt.refresh-ttl-seconds:86400}") long refreshTtlSeconds,
-            @Value("${security.jwt.issuer:spring-swap-v2}") String issuer
+            @Value("${security.jwt.issuer:spring-swap-v2}") String issuer,
+            @Value("${security.otp.preauth-ttl-seconds:600}") long preAuthTtlSeconds
     ) {
         if (secret == null || secret.length() < 64) {
             throw new IllegalStateException("JWT secret must be at least 64 characters. Provide via env configuration.");
@@ -44,11 +48,10 @@ public class JwtService {
         this.accessTtlSeconds = accessTtlSeconds;
         this.refreshTtlSeconds = refreshTtlSeconds;
         this.issuer = issuer;
+        this.preAuthTtlSeconds = preAuthTtlSeconds;
     }
 
-    // ---------------- ACCESS TOKEN ----------------
     public String generateAccessToken(User user) {
-
         Instant now = Instant.now();
 
         List<String> roles = user.getRoles() == null
@@ -71,8 +74,6 @@ public class JwtService {
                 .compact();
     }
 
-    // ---------------- REFRESH TOKEN ----------------
-    // Generates the raw signed cryptographic JWT string
     public String generateRefreshToken(User user, String jti) {
         Instant now = Instant.now();
 
@@ -87,7 +88,31 @@ public class JwtService {
                 .compact();
     }
 
-    // Safely extracts the JTI claim from an incoming string
+    public String generatePreAuthToken(User user, String purpose) {
+        Instant now = Instant.now();
+
+        return Jwts.builder()
+                .id(UUID.randomUUID().toString())
+                .subject(user.getId().toString())
+                .issuer(issuer)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(preAuthTtlSeconds)))
+                .claim("typ", "preauth")
+                .claim("purpose", purpose)
+                .signWith(key)
+                .compact();
+    }
+
+    public boolean isPreAuthToken(String token) {
+        Claims claims = parse(token).getPayload();
+        return "preauth".equals(claims.get("typ"));
+    }
+
+    public String extractPreAuthPurpose(String token) {
+        Claims claims = parse(token).getPayload();
+        return claims.get("purpose", String.class);
+    }
+
     public String extractJti(String token) {
         try {
             return Jwts.parser()
@@ -97,7 +122,6 @@ public class JwtService {
                     .getPayload()
                     .getId();
         } catch (ExpiredJwtException e) {
-
             throw new InvalidCredentialsException("Refresh token has expired. Please log in again.");
         } catch (SignatureException e) {
             throw new InvalidCredentialsException("Invalid token signature.");
@@ -106,25 +130,19 @@ public class JwtService {
         }
     }
 
-    // ---------------- PARSE TOKEN ----------------
     public Jws<Claims> parse(String token) {
-
         return Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token);
     }
 
-    // ---------------- CHECK TOKEN TYPE ----------------
     public boolean isAccessToken(String token) {
-
         Claims claims = parse(token).getPayload();
         return "access".equals(claims.get("typ"));
     }
 
-    // ---------------- EXTRACT USER ID ----------------
     public UUID getUserId(String token) {
-
         Claims claims = parse(token).getPayload();
         return UUID.fromString(claims.getSubject());
     }

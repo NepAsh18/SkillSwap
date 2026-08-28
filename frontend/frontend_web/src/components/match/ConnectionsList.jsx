@@ -1,5 +1,6 @@
 import { useConnections } from "../../context/ConnectionsContext";
 import { resolvePictureUrl } from "../../api/assertUrl";
+
 export default function ConnectionsList() {
   const { connections } = useConnections();
 
@@ -14,19 +15,19 @@ export default function ConnectionsList() {
         {connections.map((c) => (
           <div
             key={c.id}
-            className="bg-surface rounded-xl p-3 flex items-center gap-3"
+            className="bg-surface rounded-xl p-3 flex items-center gap-3 shadow-sm shadow-black/10 transition-shadow hover:shadow-md hover:shadow-black/15"
           >
             <img
               src={resolvePictureUrl(c.user.picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${c.user.name}`}
               alt=""
-              className="w-10 h-10 rounded-full object-cover"
+              className="w-10 h-10 rounded-full object-cover ring-1 ring-ink/5"
             />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-ink truncate">{c.user.name}</p>
               <p className="text-xs text-muted truncate">@{c.user.username}</p>
             </div>
             <button
-              className="text-xs font-semibold text-surface bg-ink px-3 py-1.5 rounded-lg hover:bg-ink/90 transition-colors"
+              className="text-xs font-semibold text-surface bg-ink px-3 py-1.5 rounded-lg hover:bg-ink/90 active:scale-95 transition-all"
               // No handler yet — message functionality comes later.
             >
               Message

@@ -8,6 +8,7 @@ export const ROUTES = {
   COMMITTEE_UPLOAD: "/committee/upload",
   COMMITTEE_MANAGE: "/committee/manage",
   COMMITTEE_PLAYLISTS: "/committee/playlists",
+  COMMITTEE_ANALYTICS: "/committee/analytics",
 
   // Admin
   ADMIN_ACCOUNTABILITY: "/admin/accountability",

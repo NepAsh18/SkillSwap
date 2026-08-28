@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import {resolvePictureUrl} from "../../api/assertUrl"
+import { resolvePictureUrl } from "../../api/assertUrl";
 
 // Shared visual pieces used by both MatchProfileCard and SearchProfileCard.
 // Not exported as a page-level component on its own.
@@ -14,7 +14,7 @@ export function SkillRow({ label, skills = [], color }) {
         {skills.slice(0, 4).map((s) => (
           <span
             key={s}
-            className="flex items-center gap-1 text-xs font-medium text-ink bg-ink/5 px-2 py-1 rounded-full"
+            className="flex items-center gap-1 text-xs font-medium text-ink bg-ink/5 px-2 py-1 rounded-full transition-colors hover:bg-ink/[0.08]"
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
             {s}
@@ -40,7 +40,7 @@ export function ConnectButton({ status, onConnect, onCancel }) {
     return (
       <button
         onClick={onCancel}
-        className="mt-1 w-full text-sm font-medium text-muted py-2 rounded-xl border border-ink/10 hover:border-ink/20 transition-colors relative overflow-hidden"
+        className="mt-1 w-full text-sm font-medium text-muted py-2 rounded-xl border border-ink/10 hover:border-ink/20 active:scale-[0.98] transition-all relative overflow-hidden"
       >
         <motion.span
           className="absolute inset-0 bg-learn/10"
@@ -54,7 +54,7 @@ export function ConnectButton({ status, onConnect, onCancel }) {
   return (
     <button
       onClick={onConnect}
-      className="mt-1 w-full text-sm font-semibold text-surface py-2 rounded-xl bg-ink hover:bg-ink/90 transition-colors"
+      className="mt-1 w-full text-sm font-semibold text-surface py-2 rounded-xl bg-ink hover:bg-ink/90 active:scale-[0.98] transition-all"
     >
       Connect
     </button>
@@ -67,7 +67,7 @@ export function CardAvatar({ picture, name, username }) {
       <img
         src={resolvePictureUrl(picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${name}`}
         alt=""
-        className="w-12 h-12 rounded-full object-cover bg-ink/10"
+        className="w-12 h-12 rounded-full object-cover bg-ink/10 ring-1 ring-ink/5"
       />
       <div className="min-w-0">
         <p className="font-display font-semibold text-ink truncate">{name}</p>

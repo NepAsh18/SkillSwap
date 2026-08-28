@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "react-hot-toast";
+
 import {
   getMyProfile,
   updateMyProfile,
@@ -11,7 +14,12 @@ import {
   updateProject,
   deleteProject,
 } from "../api/profileService";
+
 import { resolvePictureUrl } from "../api/assertUrl";
+
+// ==========================================
+// Constants
+// ==========================================
 
 const EDITABLE_FIELDS = [
   "name",
@@ -36,14 +44,177 @@ const FIELD_LIMITS = {
   skillsToLearn: 2000,
 };
 
+// ==========================================
+// Validation helpers
+// ==========================================
+
+function hasMeaningfulCharacters(value) {
+  if (!value || !value.trim()) return false;
+
+  const trimmed = value.trim();
+
+  // Must contain at least one letter or number.
+  return /[\p{L}\p{N}]/u.test(trimmed);
+}
+
+function isOnlyRepeatedSymbols(value) {
+  if (!value) return false;
+
+  const trimmed = value.trim();
+
+  // Detect things like:
+  // .....
+  // /////
+  // -----
+  // _____
+  // @@@@@
+  // !!!!!!
+  // ######
+  // ******
+  return /^([^\p{L}\p{N}\s])\1+$/u.test(trimmed);
+}
+
+function validateText(value, fieldName, required = false) {
+  const trimmed = (value || "").trim();
+
+  if (!trimmed) {
+    return required ? `${fieldName} is required.` : null;
+  }
+
+  if (!hasMeaningfulCharacters(trimmed)) {
+    return `${fieldName} contains invalid content.`;
+  }
+
+  if (isOnlyRepeatedSymbols(trimmed)) {
+    return `${fieldName} cannot contain only repeated symbols.`;
+  }
+
+  return null;
+}
+
+function validateName(value) {
+  const trimmed = (value || "").trim();
+
+  if (!trimmed) {
+    return "Name is required.";
+  }
+
+  if (!hasMeaningfulCharacters(trimmed)) {
+    return "Name must contain letters or numbers.";
+  }
+
+  if (isOnlyRepeatedSymbols(trimmed)) {
+    return "Name cannot contain only symbols.";
+  }
+
+  // Names should not contain URLs.
+  if (/https?:\/\//i.test(trimmed)) {
+    return "Please enter a valid name.";
+  }
+
+  return null;
+}
+
+function validateUsername(value) {
+  const trimmed = (value || "").trim();
+
+  if (!trimmed) {
+    return "Username is required.";
+  }
+
+  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
+    return "Username can only contain letters, numbers, dots, underscores and hyphens.";
+  }
+
+  if (!/[a-zA-Z0-9]/.test(trimmed)) {
+    return "Username must contain at least one letter or number.";
+  }
+
+  if (/^[._-]+$/.test(trimmed)) {
+    return "Username cannot contain only symbols.";
+  }
+
+  return null;
+}
+
+function validateUrl(value, fieldName) {
+  const trimmed = (value || "").trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (isOnlyRepeatedSymbols(trimmed)) {
+    return `${fieldName} contains invalid content.`;
+  }
+
+  try {
+    const url = new URL(trimmed);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return `${fieldName} must use http:// or https://`;
+    }
+
+    if (!url.hostname || !url.hostname.includes(".")) {
+      return `Please enter a valid ${fieldName.toLowerCase()} URL.`;
+    }
+
+    return null;
+  } catch {
+    return `Please enter a valid ${fieldName.toLowerCase()} URL.`;
+  }
+}
+
+function validateDateRange(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "Please enter valid dates.";
+  }
+
+  if (end < start) {
+    return "End date cannot be before start date.";
+  }
+
+  return null;
+}
+
+function validateScore(value) {
+  if (value === "" || value == null) return null;
+
+  const score = Number(value);
+
+  if (Number.isNaN(score)) {
+    return "Score must be a valid number.";
+  }
+
+  if (score < 0) {
+    return "Score cannot be negative.";
+  }
+
+  return null;
+}
+
+// ==========================================
+// Helpers
+// ==========================================
+
 function pickEditable(source) {
   const out = {};
-  EDITABLE_FIELDS.forEach((k) => (out[k] = source?.[k] ?? ""));
+
+  EDITABLE_FIELDS.forEach((key) => {
+    out[key] = source?.[key] ?? "";
+  });
+
   return out;
 }
 
 function formatDate(value) {
   if (!value) return "Present";
+
   try {
     return new Date(value).toLocaleDateString(undefined, {
       year: "numeric",
@@ -61,51 +232,131 @@ function splitTags(str) {
     .filter(Boolean);
 }
 
-// yyyy-mm-dd <-> Instant helpers for <input type="date">
 function toDateInputValue(instant) {
   if (!instant) return "";
-  return new Date(instant).toISOString().slice(0, 10);
+
+  try {
+    return new Date(instant).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
 }
+
 function fromDateInputValue(dateStr) {
   if (!dateStr) return null;
+
   return new Date(dateStr).toISOString();
 }
 
+// ==========================================
+// Form definitions
+// ==========================================
+
 const EDUCATION_FORM_FIELDS = [
-  { name: "institution", label: "Institution", required: true },
-  { name: "degree", label: "Degree", required: true },
-  { name: "startDate", label: "Start date", type: "date" },
-  { name: "endDate", label: "End date", type: "date" },
-  { name: "score", label: "Score", type: "number" },
-  { name: "description", label: "Description", textarea: true },
+  {
+    name: "institution",
+    label: "Institution",
+    required: true,
+  },
+  {
+    name: "degree",
+    label: "Degree",
+    required: true,
+  },
+  {
+    name: "startDate",
+    label: "Start date",
+    type: "date",
+  },
+  {
+    name: "endDate",
+    label: "End date",
+    type: "date",
+  },
+  {
+    name: "score",
+    label: "Score",
+    type: "number",
+  },
+  {
+    name: "description",
+    label: "Description",
+    textarea: true,
+  },
 ];
 
 const PROJECT_FORM_FIELDS = [
-  { name: "title", label: "Title", required: true },
-  { name: "projectLink", label: "Project link", type: "url" },
-  { name: "techStack", label: "Tech stack (comma separated)" },
-  { name: "startDate", label: "Start date", type: "date" },
-  { name: "endDate", label: "End date", type: "date" },
-  { name: "description", label: "Description", textarea: true },
+  {
+    name: "title",
+    label: "Title",
+    required: true,
+  },
+  {
+    name: "projectLink",
+    label: "Project link",
+    type: "url",
+  },
+  {
+    name: "techStack",
+    label: "Tech stack (comma separated)",
+  },
+  {
+    name: "startDate",
+    label: "Start date",
+    type: "date",
+  },
+  {
+    name: "endDate",
+    label: "End date",
+    type: "date",
+  },
+  {
+    name: "description",
+    label: "Description",
+    textarea: true,
+  },
 ];
 
 function emptyEducationForm() {
-  return { institution: "", degree: "", startDate: "", endDate: "", score: "", description: "" };
+  return {
+    institution: "",
+    degree: "",
+    startDate: "",
+    endDate: "",
+    score: "",
+    description: "",
+  };
 }
+
 function emptyProjectForm() {
-  return { title: "", projectLink: "", techStack: "", startDate: "", endDate: "", description: "" };
+  return {
+    title: "",
+    projectLink: "",
+    techStack: "",
+    startDate: "",
+    endDate: "",
+    description: "",
+  };
 }
 
 // ==========================================
-// Data / logic hook
+// Profile logic hook
 // ==========================================
+
 function useProfileLogic() {
   const [profile, setProfile] = useState(null);
   const [formData, setFormData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [message, setMessage] = useState({ type: "", text: "" });
+
+  const [message, setMessage] = useState({
+    type: "",
+    text: "",
+  });
+
+  const [errors, setErrors] = useState({});
+
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
@@ -114,19 +365,36 @@ function useProfileLogic() {
   }, []);
 
   const showMessage = (type, text) => {
-    setMessage({ type, text });
+    setMessage({
+      type,
+      text,
+    });
+
     window.clearTimeout(showMessage._t);
-    showMessage._t = window.setTimeout(() => setMessage({ type: "", text: "" }), 4000);
+
+    showMessage._t = window.setTimeout(() => {
+      setMessage({
+        type: "",
+        text: "",
+      });
+    }, 4000);
   };
 
   const loadProfileData = async () => {
     try {
       setLoading(true);
+
       const data = await getMyProfile();
+
       setProfile(data);
       setFormData(pickEditable(data));
     } catch (error) {
-      showMessage("error", "Couldn't load your profile. Try refreshing.");
+      console.error("Profile loading error:", error);
+
+      showMessage(
+        "error",
+        "Couldn't load your profile. Try refreshing."
+      );
     } finally {
       setLoading(false);
     }
@@ -134,23 +402,130 @@ function useProfileLogic() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
     const limit = FIELD_LIMITS[name];
-    if (limit && value.length > limit) return;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (limit && value.length > limit) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    // Clear the specific error as soon as the user starts fixing it.
+    setErrors((prev) => {
+      if (!prev[name]) return prev;
+
+      const next = {
+        ...prev,
+      };
+
+      delete next[name];
+
+      return next;
+    });
+  };
+
+  const validateProfile = () => {
+    const validationErrors = {};
+
+    const nameError = validateName(formData.name);
+
+    if (nameError) {
+      validationErrors.name = nameError;
+    }
+
+    const usernameError = validateUsername(formData.username);
+
+    if (usernameError) {
+      validationErrors.username = usernameError;
+    }
+
+    const bioError = validateText(formData.bio, "Bio");
+
+    if (bioError) {
+      validationErrors.bio = bioError;
+    }
+
+    const proficientError = validateText(
+      formData.skillsProficient,
+      "Proficient skills"
+    );
+
+    if (proficientError) {
+      validationErrors.skillsProficient = proficientError;
+    }
+
+    const learnError = validateText(
+      formData.skillsToLearn,
+      "Skills to learn"
+    );
+
+    if (learnError) {
+      validationErrors.skillsToLearn = learnError;
+    }
+
+    const githubError = validateUrl(
+      formData.githubLink,
+      "GitHub"
+    );
+
+    if (githubError) {
+      validationErrors.githubLink = githubError;
+    }
+
+    const linkedinError = validateUrl(
+      formData.linkedinLink,
+      "LinkedIn"
+    );
+
+    if (linkedinError) {
+      validationErrors.linkedinLink = linkedinError;
+    }
+
+    const portfolioError = validateUrl(
+      formData.portfolioLink,
+      "Portfolio"
+    );
+
+    if (portfolioError) {
+      validationErrors.portfolioLink = portfolioError;
+    }
+
+    return validationErrors;
   };
 
   const handleSave = async (e) => {
     e?.preventDefault?.();
+
+    const validationErrors = validateProfile();
+
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
+
     try {
       setSaving(true);
-      const payload = pickEditable(formData); // only ever send the 9 allowed fields
+
+      const payload = pickEditable(formData);
+
       const updated = await updateMyProfile(payload);
+
       setProfile(updated);
       setFormData(pickEditable(updated));
+
       setIsEditing(false);
-      showMessage("success", "Profile updated.");
+      setErrors({});
+
+      toast.success("Profile updated successfully.");
     } catch (error) {
-      showMessage("error", "Save failed. Nothing was lost — try again.");
+      console.error("Profile update error:", error);
+
+      toast.error("Save failed. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -159,43 +534,58 @@ function useProfileLogic() {
   const handleCancel = () => {
     setFormData(pickEditable(profile));
     setAvatarPreview(null);
+    setErrors({});
     setIsEditing(false);
-    setMessage({ type: "", text: "" });
+
+    setMessage({
+      type: "",
+      text: "",
+    });
   };
 
-  // ---- Avatar upload: this is the piece the old page never implemented ----
-  // Flow: validate file -> optimistic local preview via object URL ->
-  // upload bytes to the backend -> backend returns the hosted URL ->
-  // persist that URL immediately (avatar isn't gated behind "Edit Profile" /
-  // "Save Changes", same as GitHub/LinkedIn-style profile pages).
   const handleAvatarSelect = async (file) => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      showMessage("error", "Please choose an image file.");
+      toast.error("Please choose an image file.");
       return;
     }
+
     const MAX_BYTES = 5 * 1024 * 1024;
+
     if (file.size > MAX_BYTES) {
-      showMessage("error", "Image must be under 5MB.");
+      toast.error("Image must be under 5MB.");
       return;
     }
 
     const objectUrl = URL.createObjectURL(file);
+
     setAvatarPreview(objectUrl);
     setAvatarUploading(true);
 
     try {
       const { url } = await uploadProfilePicture(file);
-      const updated = await updateMyProfile({ ...pickEditable(formData), picture: url });
+
+      const updated = await updateMyProfile({
+        ...pickEditable(formData),
+        picture: url,
+      });
+
       setProfile(updated);
       setFormData(pickEditable(updated));
-      showMessage("success", "Profile picture updated.");
+
+      toast.success("Profile picture updated.");
     } catch (error) {
-      showMessage("error", "Upload failed. Your old picture is unchanged.");
+      console.error("Avatar upload error:", error);
+
+      toast.error(
+        "Upload failed. Your old picture is unchanged."
+      );
     } finally {
       setAvatarUploading(false);
+
       URL.revokeObjectURL(objectUrl);
+
       setAvatarPreview(null);
     }
   };
@@ -208,6 +598,7 @@ function useProfileLogic() {
     isEditing,
     setIsEditing,
     message,
+    errors,
     handleInputChange,
     handleSave,
     handleCancel,
@@ -218,34 +609,63 @@ function useProfileLogic() {
 }
 
 // ==========================================
-// Small presentational pieces
+// Section heading
 // ==========================================
+
 function SectionHeading({ eyebrow, title }) {
   return (
     <div className="mb-5 flex items-baseline gap-3">
       <span className="font-mono text-[10px] tracking-[0.2em] text-[#C9A227] uppercase">
         {eyebrow}
       </span>
+
       <span className="h-px flex-1 bg-white/10" />
-      <span className="font-mono text-[10px] text-white/25">§</span>
+
+      <span className="font-mono text-[10px] text-white/25">
+        §
+      </span>
     </div>
   );
 }
 
-function Field({ label, name, value, onChange, disabled, limit, type = "text", textarea, placeholder }) {
+// ==========================================
+// Field
+// ==========================================
+
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  disabled,
+  limit,
+  type = "text",
+  textarea,
+  placeholder,
+  error,
+}) {
   const Comp = textarea ? "textarea" : "input";
+
   return (
     <label className="block space-y-1.5">
       <span className="flex items-baseline justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+        <span
+          className={`text-[11px] font-semibold uppercase tracking-wide ${
+            error
+              ? "text-[#E39A90]"
+              : "text-white/50"
+          }`}
+        >
           {label}
         </span>
+
         {limit && !disabled && (
           <span className="font-mono text-[10px] text-white/25">
             {(value || "").length}/{limit}
           </span>
         )}
       </span>
+
       <Comp
         type={textarea ? undefined : type}
         name={name}
@@ -254,23 +674,40 @@ function Field({ label, name, value, onChange, disabled, limit, type = "text", t
         disabled={disabled}
         placeholder={placeholder}
         rows={textarea ? 4 : undefined}
-        className={`w-full rounded-lg border px-3.5 py-2.5 text-sm outline-none transition-colors
-          ${textarea ? "resize-none" : ""}
-          ${
-            disabled
-              ? "border-white/5 bg-white/[0.02] text-white/60"
-              : "border-white/10 bg-[#0E1319] text-white/90 focus:border-[#5B8DB8] focus:bg-[#0B0F14]"
-          }`}
+        className={`w-full rounded-lg border px-3.5 py-2.5 text-sm outline-none transition-all ${
+          textarea ? "resize-none" : ""
+        } ${
+          disabled
+            ? "border-white/5 bg-white/[0.02] text-white/60"
+            : error
+            ? "border-[#D9776B]/60 bg-[#D9776B]/[0.04] text-white/90 focus:border-[#D9776B]"
+            : "border-white/10 bg-[#0E1319] text-white/90 focus:border-[#5B8DB8] focus:bg-[#0B0F14]"
+        }`}
       />
+
+      {error && (
+        <p className="flex items-center gap-1.5 text-[11px] text-[#E39A90]">
+          <span>⚠</span>
+          <span>{error}</span>
+        </p>
+      )}
     </label>
   );
 }
 
+// ==========================================
+// Tag
+// ==========================================
+
 function Tag({ children, tone = "steel" }) {
   const tones = {
-    steel: "border-[#5B8DB8]/30 bg-[#5B8DB8]/10 text-[#8FB8DA]",
-    brass: "border-[#C9A227]/30 bg-[#C9A227]/10 text-[#E0BE5C]",
+    steel:
+      "border-[#5B8DB8]/30 bg-[#5B8DB8]/10 text-[#8FB8DA]",
+
+    brass:
+      "border-[#C9A227]/30 bg-[#C9A227]/10 text-[#E0BE5C]",
   };
+
   return (
     <span
       className={`inline-flex items-center rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wide ${tones[tone]}`}
@@ -280,20 +717,213 @@ function Tag({ children, tone = "steel" }) {
   );
 }
 
-function EntryModal({ open, kind, mode, fields, form, onChange, onClose, onSubmit, saving }) {
+// ==========================================
+// Entry modal
+// ==========================================
+
+function EntryModal({
+  open,
+  kind,
+  mode,
+  fields,
+  form,
+  onChange,
+  onClose,
+  onSubmit,
+  saving,
+}) {
+  const [errors, setErrors] = useState({});
+
   if (!open) return null;
-  const titleText = `${mode === "edit" ? "Edit" : "Add"} ${kind === "education" ? "education" : "project"}`;
+
+  const titleText = `${
+    mode === "edit" ? "Edit" : "Add"
+  } ${
+    kind === "education"
+      ? "education"
+      : "project"
+  }`;
+
+  const handleFieldChange = (name, value) => {
+    onChange(name, value);
+
+    setErrors((prev) => {
+      if (!prev[name]) return prev;
+
+      const next = {
+        ...prev,
+      };
+
+      delete next[name];
+
+      return next;
+    });
+  };
+
+  const validateModal = () => {
+    const nextErrors = {};
+
+    if (kind === "education") {
+      if (!form.institution?.trim()) {
+        nextErrors.institution =
+          "Institution is required.";
+      } else {
+        const error = validateText(
+          form.institution,
+          "Institution",
+          true
+        );
+
+        if (error) {
+          nextErrors.institution = error;
+        }
+      }
+
+      if (!form.degree?.trim()) {
+        nextErrors.degree =
+          "Degree is required.";
+      } else {
+        const error = validateText(
+          form.degree,
+          "Degree",
+          true
+        );
+
+        if (error) {
+          nextErrors.degree = error;
+        }
+      }
+
+      const scoreError = validateScore(form.score);
+
+      if (scoreError) {
+        nextErrors.score = scoreError;
+      }
+
+      if (form.description) {
+        const descriptionError =
+          validateText(
+            form.description,
+            "Description"
+          );
+
+        if (descriptionError) {
+          nextErrors.description =
+            descriptionError;
+        }
+      }
+
+      const dateError = validateDateRange(
+        form.startDate,
+        form.endDate
+      );
+
+      if (dateError) {
+        nextErrors.endDate = dateError;
+      }
+    }
+
+    if (kind === "project") {
+      if (!form.title?.trim()) {
+        nextErrors.title =
+          "Project title is required.";
+      } else {
+        const titleError = validateText(
+          form.title,
+          "Project title",
+          true
+        );
+
+        if (titleError) {
+          nextErrors.title = titleError;
+        }
+      }
+
+      if (form.projectLink) {
+        const linkError = validateUrl(
+          form.projectLink,
+          "Project link"
+        );
+
+        if (linkError) {
+          nextErrors.projectLink =
+            linkError;
+        }
+      }
+
+      if (form.techStack) {
+        const techError = validateText(
+          form.techStack,
+          "Tech stack"
+        );
+
+        if (techError) {
+          nextErrors.techStack = techError;
+        }
+      }
+
+      if (form.description) {
+        const descriptionError =
+          validateText(
+            form.description,
+            "Description"
+          );
+
+        if (descriptionError) {
+          nextErrors.description =
+            descriptionError;
+        }
+      }
+
+      const dateError = validateDateRange(
+        form.startDate,
+        form.endDate
+      );
+
+      if (dateError) {
+        nextErrors.endDate = dateError;
+      }
+    }
+
+    return nextErrors;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    const validationErrors = validateModal();
+
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
+
+    onSubmit();
+  };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
       <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.97 }}
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#171F28] p-6 dossier-scroll"
+        initial={{
+          opacity: 0,
+          scale: 0.97,
+        }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+        }}
+        exit={{
+          opacity: 0,
+          scale: 0.97,
+        }}
+        className="dossier-scroll max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#171F28] p-6"
       >
         <div className="mb-5 flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold text-white">{titleText}</h3>
+          <h3 className="font-display text-lg font-bold text-white">
+            {titleText}
+          </h3>
+
           <button
             type="button"
             onClick={onClose}
@@ -304,34 +934,77 @@ function EntryModal({ open, kind, mode, fields, form, onChange, onClose, onSubmi
         </div>
 
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit();
-          }}
+          onSubmit={handleSubmit}
           className="space-y-4"
         >
-          {fields.map((f) => (
-            <label key={f.name} className="block space-y-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                {f.label}
-                {f.required && <span className="text-[#D9776B]"> *</span>}
+          {fields.map((field) => (
+            <label
+              key={field.name}
+              className="block space-y-1.5"
+            >
+              <span
+                className={`text-[11px] font-semibold uppercase tracking-wide ${
+                  errors[field.name]
+                    ? "text-[#E39A90]"
+                    : "text-white/50"
+                }`}
+              >
+                {field.label}
+
+                {field.required && (
+                  <span className="text-[#D9776B]">
+                    {" "}
+                    *
+                  </span>
+                )}
               </span>
-              {f.textarea ? (
+
+              {field.textarea ? (
                 <textarea
                   rows={3}
-                  value={form[f.name] ?? ""}
-                  onChange={(e) => onChange(f.name, e.target.value)}
-                  className="w-full resize-none rounded-lg border border-white/10 bg-[#0E1319] px-3.5 py-2.5 text-sm text-white/90 outline-none focus:border-[#5B8DB8]"
+                  value={form[field.name] ?? ""}
+                  onChange={(e) =>
+                    handleFieldChange(
+                      field.name,
+                      e.target.value
+                    )
+                  }
+                  className={`w-full resize-none rounded-lg border px-3.5 py-2.5 text-sm text-white/90 outline-none transition-all ${
+                    errors[field.name]
+                      ? "border-[#D9776B]/60 bg-[#D9776B]/[0.04]"
+                      : "border-white/10 bg-[#0E1319]"
+                  } focus:border-[#5B8DB8]`}
                 />
               ) : (
                 <input
-                  type={f.type || "text"}
-                  required={f.required}
-                  step={f.type === "number" ? "0.01" : undefined}
-                  value={form[f.name] ?? ""}
-                  onChange={(e) => onChange(f.name, e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#0E1319] px-3.5 py-2.5 text-sm text-white/90 outline-none focus:border-[#5B8DB8]"
+                  type={field.type || "text"}
+                  step={
+                    field.type === "number"
+                      ? "0.01"
+                      : undefined
+                  }
+                  value={form[field.name] ?? ""}
+                  onChange={(e) =>
+                    handleFieldChange(
+                      field.name,
+                      e.target.value
+                    )
+                  }
+                  className={`w-full rounded-lg border px-3.5 py-2.5 text-sm text-white/90 outline-none transition-all ${
+                    errors[field.name]
+                      ? "border-[#D9776B]/60 bg-[#D9776B]/[0.04]"
+                      : "border-white/10 bg-[#0E1319]"
+                  } focus:border-[#5B8DB8]`}
                 />
+              )}
+
+              {errors[field.name] && (
+                <p className="flex items-center gap-1.5 text-[11px] text-[#E39A90]">
+                  <span>⚠</span>
+                  <span>
+                    {errors[field.name]}
+                  </span>
+                </p>
               )}
             </label>
           ))}
@@ -344,12 +1017,15 @@ function EntryModal({ open, kind, mode, fields, form, onChange, onClose, onSubmi
             >
               Cancel
             </button>
+
             <button
               type="submit"
               disabled={saving}
               className="rounded-xl bg-[#5B8DB8] px-4 py-2 text-sm font-semibold text-[#0B0F14] hover:bg-[#71A0C7] disabled:opacity-60"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving
+                ? "Saving…"
+                : "Save"}
             </button>
           </div>
         </form>
@@ -359,8 +1035,21 @@ function EntryModal({ open, kind, mode, fields, form, onChange, onClose, onSubmi
 }
 
 // ==========================================
-// Page
+// Empty row
 // ==========================================
+
+function EmptyRow({ text }) {
+  return (
+    <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/30">
+      {text}
+    </div>
+  );
+}
+
+// ==========================================
+// Main page
+// ==========================================
+
 export default function ProfilePage() {
   const {
     profile,
@@ -370,6 +1059,7 @@ export default function ProfilePage() {
     isEditing,
     setIsEditing,
     message,
+    errors,
     handleInputChange,
     handleSave,
     handleCancel,
@@ -379,123 +1069,347 @@ export default function ProfilePage() {
   } = useProfileLogic();
 
   const fileInputRef = useRef(null);
-  const [activeSection, setActiveSection] = useState("about");
 
-  // Education/Projects are managed independently of the profile edit form —
-  // they have their own endpoints, so they get their own local state,
-  // seeded from the profile once it loads.
-  const [educationList, setEducationList] = useState([]);
-  const [projectList, setProjectList] = useState([]);
+  const [activeSection, setActiveSection] =
+    useState("about");
+
+  const [educationList, setEducationList] =
+    useState([]);
+
+  const [projectList, setProjectList] =
+    useState([]);
+
   useEffect(() => {
-    setEducationList(profile?.educationList || []);
-    setProjectList(profile?.projectList || []);
+    setEducationList(
+      profile?.educationList || []
+    );
+
+    setProjectList(
+      profile?.projectList || []
+    );
   }, [profile]);
 
-  const [modal, setModal] = useState(null); // { kind: 'education'|'project', mode: 'add'|'edit', id?, form }
-  const [modalSaving, setModalSaving] = useState(false);
+  const [modal, setModal] = useState(null);
 
-  const openAddEducation = () => setModal({ kind: "education", mode: "add", form: emptyEducationForm() });
-  const openEditEducation = (edu) =>
+  const [modalSaving, setModalSaving] =
+    useState(false);
+
+  const openAddEducation = () => {
+    setModal({
+      kind: "education",
+      mode: "add",
+      form: emptyEducationForm(),
+    });
+  };
+
+  const openEditEducation = (edu) => {
     setModal({
       kind: "education",
       mode: "edit",
       id: edu.id,
       form: {
-        institution: edu.institution || "",
-        degree: edu.degree || "",
-        startDate: toDateInputValue(edu.startDate),
-        endDate: toDateInputValue(edu.endDate),
-        score: edu.score ?? "",
-        description: edu.description || "",
+        institution:
+          edu.institution || "",
+        degree:
+          edu.degree || "",
+        startDate:
+          toDateInputValue(
+            edu.startDate
+          ),
+        endDate:
+          toDateInputValue(
+            edu.endDate
+          ),
+        score:
+          edu.score ?? "",
+        description:
+          edu.description || "",
       },
     });
+  };
 
-  const openAddProject = () => setModal({ kind: "project", mode: "add", form: emptyProjectForm() });
-  const openEditProject = (proj) =>
+  const openAddProject = () => {
+    setModal({
+      kind: "project",
+      mode: "add",
+      form: emptyProjectForm(),
+    });
+  };
+
+  const openEditProject = (proj) => {
     setModal({
       kind: "project",
       mode: "edit",
       id: proj.id,
       form: {
-        title: proj.title || "",
-        projectLink: proj.projectLink || "",
-        techStack: proj.techStack || "",
-        startDate: toDateInputValue(proj.startDate),
-        endDate: toDateInputValue(proj.endDate),
-        description: proj.description || "",
+        title:
+          proj.title || "",
+        projectLink:
+          proj.projectLink || "",
+        techStack:
+          proj.techStack || "",
+        startDate:
+          toDateInputValue(
+            proj.startDate
+          ),
+        endDate:
+          toDateInputValue(
+            proj.endDate
+          ),
+        description:
+          proj.description || "",
       },
     });
+  };
 
-  const closeModal = () => setModal(null);
-  const handleModalFieldChange = (name, value) =>
-    setModal((prev) => ({ ...prev, form: { ...prev.form, [name]: value } }));
+  const closeModal = () => {
+    if (modalSaving) return;
+
+    setModal(null);
+  };
+
+  const handleModalFieldChange = (
+    name,
+    value
+  ) => {
+    setModal((prev) => ({
+      ...prev,
+      form: {
+        ...prev.form,
+        [name]: value,
+      },
+    }));
+  };
 
   const handleModalSubmit = async () => {
     if (!modal) return;
+
     setModalSaving(true);
+
     try {
-      if (modal.kind === "education") {
+      if (
+        modal.kind === "education"
+      ) {
         const payload = {
-          institution: modal.form.institution,
-          degree: modal.form.degree,
-          startDate: fromDateInputValue(modal.form.startDate),
-          endDate: fromDateInputValue(modal.form.endDate),
-          score: modal.form.score === "" ? null : Number(modal.form.score),
-          description: modal.form.description,
+          institution:
+            modal.form.institution.trim(),
+
+          degree:
+            modal.form.degree.trim(),
+
+          startDate:
+            fromDateInputValue(
+              modal.form.startDate
+            ),
+
+          endDate:
+            fromDateInputValue(
+              modal.form.endDate
+            ),
+
+          score:
+            modal.form.score === ""
+              ? null
+              : Number(
+                  modal.form.score
+                ),
+
+          description:
+            modal.form.description.trim(),
         };
-        if (modal.mode === "add") {
-          const created = await addEducation(payload);
-          setEducationList((prev) => [...prev, created]);
+
+        if (
+          modal.mode === "add"
+        ) {
+          const created =
+            await addEducation(
+              payload
+            );
+
+          setEducationList(
+            (prev) => [
+              ...prev,
+              created,
+            ]
+          );
+
+          toast.success(
+            "Education added."
+          );
         } else {
-          const updated = await updateEducation(modal.id, payload);
-          setEducationList((prev) => prev.map((e) => (e.id === modal.id ? updated : e)));
+          const updated =
+            await updateEducation(
+              modal.id,
+              payload
+            );
+
+          setEducationList(
+            (prev) =>
+              prev.map((e) =>
+                e.id === modal.id
+                  ? updated
+                  : e
+              )
+          );
+
+          toast.success(
+            "Education updated."
+          );
         }
       } else {
         const payload = {
-          title: modal.form.title,
-          projectLink: modal.form.projectLink,
-          techStack: modal.form.techStack,
-          startDate: fromDateInputValue(modal.form.startDate),
-          endDate: fromDateInputValue(modal.form.endDate),
-          description: modal.form.description,
+          title:
+            modal.form.title.trim(),
+
+          projectLink:
+            modal.form.projectLink.trim(),
+
+          techStack:
+            modal.form.techStack.trim(),
+
+          startDate:
+            fromDateInputValue(
+              modal.form.startDate
+            ),
+
+          endDate:
+            fromDateInputValue(
+              modal.form.endDate
+            ),
+
+          description:
+            modal.form.description.trim(),
         };
-        if (modal.mode === "add") {
-          const created = await addProject(payload);
-          setProjectList((prev) => [...prev, created]);
+
+        if (
+          modal.mode === "add"
+        ) {
+          const created =
+            await addProject(
+              payload
+            );
+
+          setProjectList(
+            (prev) => [
+              ...prev,
+              created,
+            ]
+          );
+
+          toast.success(
+            "Project added."
+          );
         } else {
-          const updated = await updateProject(modal.id, payload);
-          setProjectList((prev) => prev.map((p) => (p.id === modal.id ? updated : p)));
+          const updated =
+            await updateProject(
+              modal.id,
+              payload
+            );
+
+          setProjectList(
+            (prev) =>
+              prev.map((p) =>
+                p.id === modal.id
+                  ? updated
+                  : p
+              )
+          );
+
+          toast.success(
+            "Project updated."
+          );
         }
       }
-      closeModal();
+
+      setModal(null);
     } catch (error) {
-      // A more elaborate UI could route this into the top-level toast;
-      // kept local here since it's tied to a modal that's still open.
-      alert(`Couldn't save that ${modal.kind} entry. Please try again.`);
+      console.error(
+        "Modal save error:",
+        error
+      );
+
+      toast.error(
+        `Couldn't save that ${
+          modal.kind
+        } entry. Please try again.`
+      );
     } finally {
       setModalSaving(false);
     }
   };
 
-  const handleDeleteEducation = async (id) => {
-    if (!window.confirm("Remove this education entry?")) return;
-    try {
-      await deleteEducation(id);
-      setEducationList((prev) => prev.filter((e) => e.id !== id));
-    } catch {
-      alert("Couldn't delete that entry. Please try again.");
-    }
-  };
+  const handleDeleteEducation =
+    async (id) => {
+      if (
+        !window.confirm(
+          "Remove this education entry?"
+        )
+      ) {
+        return;
+      }
 
-  const handleDeleteProject = async (id) => {
-    if (!window.confirm("Remove this project?")) return;
-    try {
-      await deleteProject(id);
-      setProjectList((prev) => prev.filter((p) => p.id !== id));
-    } catch {
-      alert("Couldn't delete that project. Please try again.");
-    }
-  };
+      try {
+        await deleteEducation(id);
+
+        setEducationList(
+          (prev) =>
+            prev.filter(
+              (e) => e.id !== id
+            )
+        );
+
+        toast.success(
+          "Education removed."
+        );
+      } catch (error) {
+        console.error(
+          error
+        );
+
+        toast.error(
+          "Couldn't delete that entry."
+        );
+      }
+    };
+
+  const handleDeleteProject =
+    async (id) => {
+      if (
+        !window.confirm(
+          "Remove this project?"
+        )
+      ) {
+        return;
+      }
+
+      try {
+        await deleteProject(id);
+
+        setProjectList(
+          (prev) =>
+            prev.filter(
+              (p) => p.id !== id
+            )
+        );
+
+        toast.success(
+          "Project removed."
+        );
+      } catch (error) {
+        console.error(
+          error
+        );
+
+        toast.error(
+          "Couldn't delete that project."
+        );
+      }
+    };
+
+  // ==========================================
+  // Section refs
+  // ==========================================
+
   const sectionRefs = {
     about: useRef(null),
     skills: useRef(null),
@@ -503,40 +1417,102 @@ export default function ProfilePage() {
     education: useRef(null),
     projects: useRef(null),
   };
+
   const scrollAreaRef = useRef(null);
 
   const sections = [
-    { id: "about", label: "About" },
-    { id: "skills", label: "Skills" },
-    { id: "links", label: "Links" },
-    { id: "education", label: "Education" },
-    { id: "projects", label: "Projects" },
+    {
+      id: "about",
+      label: "About",
+    },
+    {
+      id: "skills",
+      label: "Skills",
+    },
+    {
+      id: "links",
+      label: "Links",
+    },
+    {
+      id: "education",
+      label: "Education",
+    },
+    {
+      id: "projects",
+      label: "Projects",
+    },
   ];
 
   const scrollToSection = (id) => {
-    sectionRefs[id]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    sectionRefs[
+      id
+    ]?.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
     setActiveSection(id);
   };
 
-  // Highlight the nav item for whichever section is currently in view
   useEffect(() => {
-    const root = scrollAreaRef.current;
+    const root =
+      scrollAreaRef.current;
+
     if (!root) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible?.target?.dataset?.section) {
-          setActiveSection(visible.target.dataset.section);
+
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          const visible =
+            entries
+              .filter(
+                (entry) =>
+                  entry.isIntersecting
+              )
+              .sort(
+                (a, b) =>
+                  b.intersectionRatio -
+                  a.intersectionRatio
+              )[0];
+
+          if (
+            visible?.target
+              ?.dataset?.section
+          ) {
+            setActiveSection(
+              visible.target.dataset.section
+            );
+          }
+        },
+        {
+          root,
+          threshold: [
+            0.25,
+            0.5,
+            0.75,
+          ],
         }
-      },
-      { root, threshold: [0.25, 0.5, 0.75] }
-    );
-    Object.values(sectionRefs).forEach((r) => r.current && observer.observe(r.current));
-    return () => observer.disconnect();
+      );
+
+    Object.values(
+      sectionRefs
+    ).forEach((ref) => {
+      if (ref.current) {
+        observer.observe(
+          ref.current
+        );
+      }
+    });
+
+    return () =>
+      observer.disconnect();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
+
+  // ==========================================
+  // Loading
+  // ==========================================
 
   if (loading) {
     return (
@@ -554,48 +1530,76 @@ export default function ProfilePage() {
     );
   }
 
- const avatarSrc =
-  avatarPreview || resolvePictureUrl(profile.picture);
-  const initials = (profile.name || "?")
+  // ==========================================
+  // Avatar
+  // ==========================================
+
+  const avatarSrc =
+    avatarPreview ||
+    resolvePictureUrl(
+      profile.picture
+    );
+
+  const initials = (
+    profile.name || "?"
+  )
     .split(" ")
     .map((p) => p[0])
     .slice(0, 2)
     .join("")
     .toUpperCase();
 
+  // ==========================================
+  // Render
+  // ==========================================
+
   return (
     <div className="h-screen w-full overflow-hidden bg-[#12181F] font-sans text-white/90">
-      {/* subtle blueprint grid backdrop */}
+      {/* Blueprint grid */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.05]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px)",
-          backgroundSize: "36px 36px",
+          backgroundSize:
+            "36px 36px",
         }}
       />
 
       <div className="relative mx-auto flex h-full max-w-6xl flex-col lg:flex-row">
-        {/* ================= SIDEBAR — the "ID card" ================= */}
+        {/* ======================================
+            SIDEBAR
+        ====================================== */}
+
         <aside className="shrink-0 border-b border-white/10 px-6 py-8 lg:h-full lg:w-[300px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-8">
           <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#171F28] p-6">
-            {/* perforated edge, badge feel */}
             <div className="absolute inset-x-0 top-0 flex justify-between px-2 pt-2">
-              {Array.from({ length: 14 }).map((_, i) => (
-                <span key={i} className="h-1 w-1 rounded-full bg-[#12181F]" />
+              {Array.from({
+                length: 14,
+              }).map((_, i) => (
+                <span
+                  key={i}
+                  className="h-1 w-1 rounded-full bg-[#12181F]"
+                />
               ))}
             </div>
 
             <div className="flex flex-col items-center pt-3 text-center">
+              {/* Avatar */}
               <div className="group relative">
                 <div className="h-24 w-24 overflow-hidden rounded-full ring-2 ring-[#C9A227]/40 ring-offset-2 ring-offset-[#171F28]">
                   {avatarSrc ? (
-                    <img src={avatarSrc} alt={profile.name} className="h-full w-full object-cover" />
+                    <img
+                      src={avatarSrc}
+                      alt={profile.name}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-[#0E1319] font-mono text-lg text-white/40">
                       {initials}
                     </div>
                   )}
+
                   {avatarUploading && (
                     <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -605,39 +1609,72 @@ export default function ProfilePage() {
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() =>
+                    fileInputRef.current?.click()
+                  }
                   title="Change profile picture"
                   className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[#C9A227] text-[#12181F] shadow-md transition-transform hover:scale-105 active:scale-95"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
                     <path
                       d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
                       stroke="currentColor"
                       strokeWidth="1.8"
                       strokeLinejoin="round"
                     />
-                    <circle cx="12" cy="13.5" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+
+                    <circle
+                      cx="12"
+                      cy="13.5"
+                      r="3.2"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
                   </svg>
                 </button>
+
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => handleAvatarSelect(e.target.files?.[0])}
+                  onChange={(e) =>
+                    handleAvatarSelect(
+                      e.target.files?.[0]
+                    )
+                  }
                 />
               </div>
 
               <h1 className="mt-4 font-display text-xl font-bold tracking-tight text-white">
                 {profile.name}
               </h1>
-              <p className="mt-0.5 font-mono text-xs text-white/40">@{profile.username}</p>
-              <p className="mt-1 text-xs text-white/50">{profile.email}</p>
+
+              <p className="mt-0.5 font-mono text-xs text-white/40">
+                @{profile.username}
+              </p>
+
+              <p className="mt-1 text-xs text-white/50">
+                {profile.email}
+              </p>
 
               <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-                {Array.from(profile.roles || []).map((role) => (
-                  <Tag key={role} tone="brass">
-                    {role.replace("ROLE_", "")}
+                {Array.from(
+                  profile.roles || []
+                ).map((role) => (
+                  <Tag
+                    key={role}
+                    tone="brass"
+                  >
+                    {role.replace(
+                      "ROLE_",
+                      ""
+                    )}
                   </Tag>
                 ))}
               </div>
@@ -645,11 +1682,22 @@ export default function ProfilePage() {
               <div className="mt-4 w-full border-t border-white/10 pt-3 text-left font-mono text-[10px] text-white/35">
                 <div className="flex justify-between">
                   <span>Auth</span>
-                  <span className="text-white/60">{profile.provider}</span>
+
+                  <span className="text-white/60">
+                    {profile.provider}
+                  </span>
                 </div>
+
                 <div className="mt-1 flex justify-between">
-                  <span>Member since</span>
-                  <span className="text-white/60">{formatDate(profile.createdAt)}</span>
+                  <span>
+                    Member since
+                  </span>
+
+                  <span className="text-white/60">
+                    {formatDate(
+                      profile.createdAt
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
@@ -657,7 +1705,9 @@ export default function ProfilePage() {
 
           {!isEditing ? (
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() =>
+                setIsEditing(true)
+              }
               className="mt-4 w-full rounded-xl bg-[#5B8DB8] py-2.5 text-sm font-semibold text-[#0B0F14] transition-colors hover:bg-[#71A0C7]"
             >
               Edit profile
@@ -668,37 +1718,56 @@ export default function ProfilePage() {
             </p>
           )}
 
-          {/* section nav — desktop only, since the panel scrolls independently */}
+          {/* Section nav */}
           <nav className="mt-6 hidden flex-col gap-1 lg:flex">
-            {sections.map((s) => (
+            {sections.map((section) => (
               <button
-                key={s.id}
-                onClick={() => scrollToSection(s.id)}
+                key={section.id}
+                onClick={() =>
+                  scrollToSection(
+                    section.id
+                  )
+                }
                 className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                  activeSection === s.id
+                  activeSection ===
+                  section.id
                     ? "bg-white/[0.06] text-white"
                     : "text-white/40 hover:bg-white/[0.03] hover:text-white/70"
                 }`}
               >
-                {s.label}
+                {section.label}
               </button>
             ))}
           </nav>
         </aside>
 
-        {/* ================= SCROLLABLE DOSSIER PANEL ================= */}
+        {/* ======================================
+            MAIN
+        ====================================== */}
+
         <main
           ref={scrollAreaRef}
           className="dossier-scroll min-h-0 flex-1 overflow-y-auto px-6 py-8 lg:px-10"
         >
+          {/* Existing inline server/status message */}
           <AnimatePresence>
             {message.text && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{
+                  opacity: 0,
+                  y: -10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: -10,
+                }}
                 className={`mb-6 rounded-lg border px-4 py-3 text-sm font-medium ${
-                  message.type === "success"
+                  message.type ===
+                  "success"
                     ? "border-[#4C9A6A]/30 bg-[#4C9A6A]/10 text-[#7FC89A]"
                     : "border-[#D9776B]/30 bg-[#D9776B]/10 text-[#E39A90]"
                 }`}
@@ -708,80 +1777,175 @@ export default function ProfilePage() {
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleSave} className="space-y-12 pb-28">
-            {/* ABOUT */}
-            <section ref={sectionRefs.about} data-section="about">
-              <SectionHeading eyebrow="01 — Identity" title="About" />
+          <form
+            onSubmit={handleSave}
+            className="space-y-12 pb-28"
+          >
+            {/* ==================================
+                ABOUT
+            ================================== */}
+
+            <section
+              ref={sectionRefs.about}
+              data-section="about"
+            >
+              <SectionHeading
+                eyebrow="01 — Identity"
+                title="About"
+              />
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field
                   label="Display name"
                   name="name"
                   value={formData.name}
-                  onChange={handleInputChange}
+                  onChange={
+                    handleInputChange
+                  }
                   disabled={!isEditing}
-                  limit={FIELD_LIMITS.name}
+                  limit={
+                    FIELD_LIMITS.name
+                  }
+                  error={
+                    isEditing
+                      ? errors.name
+                      : undefined
+                  }
                 />
+
                 <Field
                   label="Username"
                   name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
+                  value={
+                    formData.username
+                  }
+                  onChange={
+                    handleInputChange
+                  }
                   disabled={!isEditing}
-                  limit={FIELD_LIMITS.username}
+                  limit={
+                    FIELD_LIMITS.username
+                  }
+                  error={
+                    isEditing
+                      ? errors.username
+                      : undefined
+                  }
                 />
+
                 <div className="sm:col-span-2">
                   <Field
                     label="Bio"
                     name="bio"
-                    value={formData.bio}
-                    onChange={handleInputChange}
+                    value={
+                      formData.bio
+                    }
+                    onChange={
+                      handleInputChange
+                    }
                     disabled={!isEditing}
-                    limit={FIELD_LIMITS.bio}
+                    limit={
+                      FIELD_LIMITS.bio
+                    }
                     textarea
                     placeholder="A couple of sentences about what you build and what you're into."
+                    error={
+                      isEditing
+                        ? errors.bio
+                        : undefined
+                    }
                   />
                 </div>
               </div>
             </section>
 
-            {/* SKILLS */}
-            <section ref={sectionRefs.skills} data-section="skills">
-              <SectionHeading eyebrow="02 — Exchange" title="Skills" />
+            {/* ==================================
+                SKILLS
+            ================================== */}
+
+            <section
+              ref={sectionRefs.skills}
+              data-section="skills"
+            >
+              <SectionHeading
+                eyebrow="02 — SKILLS"
+                title="Skills"
+              />
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Field
                     label="Proficient in"
                     name="skillsProficient"
-                    value={formData.skillsProficient}
-                    onChange={handleInputChange}
+                    value={
+                      formData.skillsProficient
+                    }
+                    onChange={
+                      handleInputChange
+                    }
                     disabled={!isEditing}
-                    limit={FIELD_LIMITS.skillsProficient}
+                    limit={
+                      FIELD_LIMITS.skillsProficient
+                    }
                     textarea
                     placeholder="Spring Boot, React, PostgreSQL"
+                    error={
+                      isEditing
+                        ? errors.skillsProficient
+                        : undefined
+                    }
                   />
+
                   {!isEditing && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {splitTags(formData.skillsProficient).map((s) => (
-                        <Tag key={s} tone="steel">{s}</Tag>
+                      {splitTags(
+                        formData.skillsProficient
+                      ).map((skill) => (
+                        <Tag
+                          key={skill}
+                          tone="steel"
+                        >
+                          {skill}
+                        </Tag>
                       ))}
                     </div>
                   )}
                 </div>
+
                 <div>
                   <Field
                     label="Want to learn"
                     name="skillsToLearn"
-                    value={formData.skillsToLearn}
-                    onChange={handleInputChange}
+                    value={
+                      formData.skillsToLearn
+                    }
+                    onChange={
+                      handleInputChange
+                    }
                     disabled={!isEditing}
-                    limit={FIELD_LIMITS.skillsToLearn}
+                    limit={
+                      FIELD_LIMITS.skillsToLearn
+                    }
                     textarea
                     placeholder="Kubernetes, AWS, Go"
+                    error={
+                      isEditing
+                        ? errors.skillsToLearn
+                        : undefined
+                    }
                   />
+
                   {!isEditing && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {splitTags(formData.skillsToLearn).map((s) => (
-                        <Tag key={s} tone="brass">{s}</Tag>
+                      {splitTags(
+                        formData.skillsToLearn
+                      ).map((skill) => (
+                        <Tag
+                          key={skill}
+                          tone="brass"
+                        >
+                          {skill}
+                        </Tag>
                       ))}
                     </div>
                   )}
@@ -789,216 +1953,387 @@ export default function ProfilePage() {
               </div>
             </section>
 
-            {/* LINKS */}
-            <section ref={sectionRefs.links} data-section="links">
-              <SectionHeading eyebrow="03 — Elsewhere" title="Links" />
+            {/* ==================================
+                LINKS
+            ================================== */}
+
+            <section
+              ref={sectionRefs.links}
+              data-section="links"
+            >
+              <SectionHeading
+                eyebrow="03 — Social"
+                title="Links"
+              />
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field
                   label="GitHub"
                   name="githubLink"
                   type="url"
-                  value={formData.githubLink}
-                  onChange={handleInputChange}
+                  value={
+                    formData.githubLink
+                  }
+                  onChange={
+                    handleInputChange
+                  }
                   disabled={!isEditing}
-                  limit={FIELD_LIMITS.githubLink}
+                  limit={
+                    FIELD_LIMITS.githubLink
+                  }
                   placeholder="https://github.com/you"
+                  error={
+                    isEditing
+                      ? errors.githubLink
+                      : undefined
+                  }
                 />
+
                 <Field
                   label="LinkedIn"
                   name="linkedinLink"
                   type="url"
-                  value={formData.linkedinLink}
-                  onChange={handleInputChange}
+                  value={
+                    formData.linkedinLink
+                  }
+                  onChange={
+                    handleInputChange
+                  }
                   disabled={!isEditing}
-                  limit={FIELD_LIMITS.linkedinLink}
+                  limit={
+                    FIELD_LIMITS.linkedinLink
+                  }
                   placeholder="https://linkedin.com/in/you"
+                  error={
+                    isEditing
+                      ? errors.linkedinLink
+                      : undefined
+                  }
                 />
+
                 <Field
                   label="Portfolio"
                   name="portfolioLink"
                   type="url"
-                  value={formData.portfolioLink}
-                  onChange={handleInputChange}
+                  value={
+                    formData.portfolioLink
+                  }
+                  onChange={
+                    handleInputChange
+                  }
                   disabled={!isEditing}
-                  limit={FIELD_LIMITS.portfolioLink}
+                  limit={
+                    FIELD_LIMITS.portfolioLink
+                  }
                   placeholder="https://you.dev"
+                  error={
+                    isEditing
+                      ? errors.portfolioLink
+                      : undefined
+                  }
                 />
               </div>
             </section>
 
-            {/* EDUCATION */}
-            <section ref={sectionRefs.education} data-section="education">
+            {/* ==================================
+                EDUCATION
+            ================================== */}
+
+            <section
+              ref={sectionRefs.education}
+              data-section="education"
+            >
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div className="flex flex-1 items-baseline gap-3">
                   <span className="font-mono text-[10px] tracking-[0.2em] text-[#C9A227] uppercase">
-                    04 — Record
+                    04 — Education
                   </span>
+
                   <span className="h-px flex-1 bg-white/10" />
                 </div>
+
                 <button
                   type="button"
-                  onClick={openAddEducation}
+                  onClick={
+                    openAddEducation
+                  }
                   className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/5"
                 >
                   + Add
                 </button>
               </div>
 
-              {educationList.length === 0 ? (
+              {educationList.length ===
+              0 ? (
                 <EmptyRow text="No education added yet." />
               ) : (
                 <div className="space-y-3">
-                  {educationList.map((edu) => (
-                    <div
-                      key={edu.id}
-                      className="group rounded-xl border border-white/10 bg-white/[0.02] p-4"
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="font-semibold text-white/90">{edu.degree}</p>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-[11px] text-white/40">
-                            {formatDate(edu.startDate)} – {formatDate(edu.endDate)}
-                          </span>
-                          <div className="hidden gap-2 group-hover:flex">
-                            <button
-                              type="button"
-                              onClick={() => openEditEducation(edu)}
-                              className="text-[11px] text-[#8FB8DA] hover:underline"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEducation(edu.id)}
-                              className="text-[11px] text-[#E39A90] hover:underline"
-                            >
-                              Delete
-                            </button>
+                  {educationList.map(
+                    (edu) => (
+                      <div
+                        key={edu.id}
+                        className="group rounded-xl border border-white/10 bg-white/[0.02] p-4"
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="font-semibold text-white/90">
+                            {edu.degree}
+                          </p>
+
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-[11px] text-white/40">
+                              {formatDate(
+                                edu.startDate
+                              )}{" "}
+                              –{" "}
+                              {formatDate(
+                                edu.endDate
+                              )}
+                            </span>
+
+                            <div className="hidden gap-2 group-hover:flex">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditEducation(
+                                    edu
+                                  )
+                                }
+                                className="text-[11px] text-[#8FB8DA] hover:underline"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteEducation(
+                                    edu.id
+                                  )
+                                }
+                                className="text-[11px] text-[#E39A90] hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
                         </div>
+
+                        <p className="mt-0.5 text-sm text-white/50">
+                          {edu.institution}
+                        </p>
+
+                        {edu.score !=
+                          null &&
+                          edu.score !==
+                            "" && (
+                            <p className="mt-1 font-mono text-[11px] text-[#8FB8DA]">
+                              Score:{" "}
+                              {edu.score}
+                            </p>
+                          )}
+
+                        {edu.description && (
+                          <p className="mt-2 text-sm leading-relaxed text-white/60">
+                            {
+                              edu.description
+                            }
+                          </p>
+                        )}
                       </div>
-                      <p className="mt-0.5 text-sm text-white/50">{edu.institution}</p>
-                      {edu.score != null && edu.score !== "" && (
-                        <p className="mt-1 font-mono text-[11px] text-[#8FB8DA]">
-                          Score: {edu.score}
-                        </p>
-                      )}
-                      {edu.description && (
-                        <p className="mt-2 text-sm leading-relaxed text-white/60">
-                          {edu.description}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               )}
             </section>
 
-            {/* PROJECTS */}
-            <section ref={sectionRefs.projects} data-section="projects">
+            {/* ==================================
+                PROJECTS
+            ================================== */}
+
+            <section
+              ref={sectionRefs.projects}
+              data-section="projects"
+            >
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div className="flex flex-1 items-baseline gap-3">
                   <span className="font-mono text-[10px] tracking-[0.2em] text-[#C9A227] uppercase">
-                    05 — Built
+                    05 — Project
                   </span>
+
                   <span className="h-px flex-1 bg-white/10" />
                 </div>
+
                 <button
                   type="button"
-                  onClick={openAddProject}
+                  onClick={
+                    openAddProject
+                  }
                   className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/5"
                 >
                   + Add
                 </button>
               </div>
 
-              {projectList.length === 0 ? (
+              {projectList.length ===
+              0 ? (
                 <EmptyRow text="No projects added yet." />
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {projectList.map((proj) => (
-                    <div
-                      key={proj.id}
-                      className="group relative rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-[#5B8DB8]/40 hover:bg-white/[0.04]"
-                    >
-                      <div className="absolute right-3 top-3 hidden gap-2 group-hover:flex">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            openEditProject(proj);
-                          }}
-                          className="rounded-md bg-[#12181F]/90 px-2 py-1 text-[11px] text-[#8FB8DA] hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleDeleteProject(proj.id);
-                          }}
-                          className="rounded-md bg-[#12181F]/90 px-2 py-1 text-[11px] text-[#E39A90] hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
-
-                      <a
-                        href={proj.projectLink || undefined}
-                        target={proj.projectLink ? "_blank" : undefined}
-                        rel="noreferrer"
-                        className="block"
-                        onClick={(e) => { if (!proj.projectLink) e.preventDefault(); }}
+                  {projectList.map(
+                    (proj) => (
+                      <div
+                        key={proj.id}
+                        className="group relative rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-[#5B8DB8]/40 hover:bg-white/[0.04]"
                       >
-                        <div className="flex items-start justify-between gap-2 pr-16">
-                          <p className="font-semibold text-white/90">{proj.title}</p>
-                          {proj.projectLink && <span className="mt-0.5 shrink-0 text-white/30">↗</span>}
+                        <div className="absolute right-3 top-3 hidden gap-2 group-hover:flex">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openEditProject(
+                                proj
+                              )
+                            }
+                            className="rounded-md bg-[#12181F]/90 px-2 py-1 text-[11px] text-[#8FB8DA] hover:underline"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteProject(
+                                proj.id
+                              )
+                            }
+                            className="rounded-md bg-[#12181F]/90 px-2 py-1 text-[11px] text-[#E39A90] hover:underline"
+                          >
+                            Delete
+                          </button>
                         </div>
-                        <p className="mt-1 font-mono text-[10px] text-white/35">
-                          {formatDate(proj.startDate)} – {formatDate(proj.endDate)}
-                        </p>
-                        {proj.description && (
-                          <p className="mt-2 text-sm leading-relaxed text-white/60">{proj.description}</p>
-                        )}
-                        {proj.techStack && (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {splitTags(proj.techStack).map((t) => (
-                              <Tag key={t} tone="steel">{t}</Tag>
-                            ))}
+
+                        <a
+                          href={
+                            proj.projectLink ||
+                            undefined
+                          }
+                          target={
+                            proj.projectLink
+                              ? "_blank"
+                              : undefined
+                          }
+                          rel="noreferrer"
+                          className="block"
+                          onClick={(e) => {
+                            if (
+                              !proj.projectLink
+                            ) {
+                              e.preventDefault();
+                            }
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2 pr-16">
+                            <p className="font-semibold text-white/90">
+                              {
+                                proj.title
+                              }
+                            </p>
+
+                            {proj.projectLink && (
+                              <span className="mt-0.5 shrink-0 text-white/30">
+                                ↗
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </a>
-                    </div>
-                  ))}
+
+                          <p className="mt-1 font-mono text-[10px] text-white/35">
+                            {formatDate(
+                              proj.startDate
+                            )}{" "}
+                            –{" "}
+                            {formatDate(
+                              proj.endDate
+                            )}
+                          </p>
+
+                          {proj.description && (
+                            <p className="mt-2 text-sm leading-relaxed text-white/60">
+                              {
+                                proj.description
+                              }
+                            </p>
+                          )}
+
+                          {proj.techStack && (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {splitTags(
+                                proj.techStack
+                              ).map(
+                                (tech) => (
+                                  <Tag
+                                    key={
+                                      tech
+                                    }
+                                    tone="steel"
+                                  >
+                                    {
+                                      tech
+                                    }
+                                  </Tag>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </a>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </section>
           </form>
 
-          {/* Sticky save bar */}
+          {/* ==================================
+              SAVE BAR
+          ================================== */}
+
           <AnimatePresence>
             {isEditing && (
               <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 30 }}
+                initial={{
+                  opacity: 0,
+                  y: 30,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  y: 30,
+                }}
                 className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 gap-3 rounded-2xl border border-white/10 bg-[#171F28]/95 p-3 shadow-2xl backdrop-blur-md lg:left-[calc(50%+150px)]"
               >
                 <button
                   type="button"
-                  onClick={handleCancel}
+                  onClick={
+                    handleCancel
+                  }
                   className="rounded-xl border border-white/10 px-5 py-2.5 text-sm font-semibold text-white/70 transition-colors hover:bg-white/5"
                 >
                   Cancel
                 </button>
+
                 <button
                   type="button"
-                  onClick={handleSave}
+                  onClick={
+                    handleSave
+                  }
                   disabled={saving}
                   className="rounded-xl bg-[#4C9A6A] px-5 py-2.5 text-sm font-semibold text-[#0B0F14] transition-colors hover:bg-[#5FB37E] disabled:opacity-60"
                 >
-                  {saving ? "Saving…" : "Save changes"}
+                  {saving
+                    ? "Saving…"
+                    : "Save changes"}
                 </button>
               </motion.div>
             )}
@@ -1006,40 +2341,71 @@ export default function ProfilePage() {
         </main>
       </div>
 
+      {/* ========================================
+          MODAL
+      ======================================== */}
+
       <AnimatePresence>
         {modal && (
           <EntryModal
             open={!!modal}
             kind={modal.kind}
             mode={modal.mode}
-            fields={modal.kind === "education" ? EDUCATION_FORM_FIELDS : PROJECT_FORM_FIELDS}
+            fields={
+              modal.kind ===
+              "education"
+                ? EDUCATION_FORM_FIELDS
+                : PROJECT_FORM_FIELDS
+            }
             form={modal.form}
-            onChange={handleModalFieldChange}
+            onChange={
+              handleModalFieldChange
+            }
             onClose={closeModal}
-            onSubmit={handleModalSubmit}
+            onSubmit={
+              handleModalSubmit
+            }
             saving={modalSaving}
           />
         )}
       </AnimatePresence>
 
+      {/* ========================================
+          Scrollbar styling
+      ======================================== */}
+
       <style>{`
-        .dossier-scroll::-webkit-scrollbar { width: 8px; }
-        .dossier-scroll::-webkit-scrollbar-track { background: transparent; }
-        .dossier-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
-        .dossier-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-        .dossier-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
-        aside::-webkit-scrollbar { width: 6px; }
-        aside::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 8px; }
+        .dossier-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .dossier-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .dossier-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.12);
+          border-radius: 8px;
+        }
+
+        .dossier-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(255,255,255,0.2);
+        }
+
+        .dossier-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.15) transparent;
+        }
+
+        aside::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        aside::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.1);
+          border-radius: 8px;
+        }
       `}</style>
     </div>
   );
 }
-
-function EmptyRow({ text }) {
-  return (
-    <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/30">
-      {text}
-    </div>
-  );
-}
-

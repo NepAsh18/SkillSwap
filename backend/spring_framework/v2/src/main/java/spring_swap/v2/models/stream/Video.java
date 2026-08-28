@@ -37,6 +37,9 @@ public class Video {
     @Column(name = "duration_secs")
     private Integer durationSecs;
 
+    @Column(name = "thumbnail_path")
+    private String thumbnailPath;
+
     @Column(name = "is_18_plus", nullable = false)
     private boolean is18Plus;
 

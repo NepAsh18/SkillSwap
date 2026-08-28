@@ -144,4 +144,13 @@ public class VideoStreamController {
     public ResponseEntity<PlaylistResponseDTO> getPlaylist(@PathVariable Long playlistId) {
         return ResponseEntity.ok(videoUploadService.getPlaylist(playlistId));
     }
+
+    @GetMapping("/{videoUuid}/thumbnail.jpg")
+    public ResponseEntity<Resource> serveThumbnail(@PathVariable UUID videoUuid) {
+        Path path = Paths.get(HLS_DIR, videoUuid.toString(), "thumbnail.jpg");
+        if (!Files.exists(path)) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
+                .body(new FileSystemResource(path));
+    }
 }

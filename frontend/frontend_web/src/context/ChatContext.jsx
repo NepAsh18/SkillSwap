@@ -22,6 +22,8 @@ import {
   sendReactionEvent,
 } from "../api/chatSocket";
 
+import { fetchEventNotifications, fetchEventUnreadCount, markEventNotificationRead, markAllEventNotificationsRead } from "../api/events";
+
 const ChatContext = createContext(null);
 
 function makeTempId() {
@@ -36,6 +38,7 @@ export function ChatProvider({ children }) {
   const [messagesByChat, setMessagesByChat] = useState({});
   const [typingByChat, setTypingByChat] = useState({});
   const [chatNotifications, setChatNotifications] = useState([]);
+  const [eventNotifications, setEventNotifications] = useState([]);
   // Reply-in-progress per chat — the message the composer is currently
   // replying to. Cleared once the reply is sent or the user cancels.
   const [replyDraftByChat, setReplyDraftByChat] = useState({});
@@ -81,6 +84,7 @@ export function ChatProvider({ children }) {
     if (!currentUserId) return;
 
     refreshChats().finally(() => setLoading(false));
+    fetchEventNotifications().then(setEventNotifications).catch(console.error);
 
     connectChatSocket({
       onChatListEvent: ({ event, chat }) => {
@@ -354,6 +358,16 @@ export function ChatProvider({ children }) {
     setChatNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, []);
 
+  const markEventNotifRead = useCallback((id) => {
+    setEventNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    markEventNotificationRead(id).catch(console.error);
+  }, []);
+
+  const markAllEventNotifsRead = useCallback(() => {
+    setEventNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllEventNotificationsRead().catch(console.error);
+  }, []);
+
   return (
     <ChatContext.Provider
       value={{
@@ -368,6 +382,9 @@ export function ChatProvider({ children }) {
         clearReplyDraft,
         reactToMessage,
         chatNotifications,
+        eventNotifications,
+        markEventNotifRead,
+        markAllEventNotifsRead,
         openChat,
         openDirectChat,
         sendMessage,

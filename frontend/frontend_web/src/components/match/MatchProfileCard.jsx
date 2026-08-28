@@ -48,7 +48,8 @@ export default function MatchProfileCard({ user }) {
         onClick={() => setOpen(true)}
         whileHover={{ y: -3 }}
         whileTap={{ scale: 0.98 }}
-        className="text-left w-full bg-surface rounded-2xl p-4 shadow-lg shadow-black/20 flex flex-col gap-3"
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        className="text-left w-full bg-surface rounded-2xl p-4 shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/25 flex flex-col gap-3 transition-shadow"
       >
         <div className="flex items-center gap-3">
           <CardAvatar

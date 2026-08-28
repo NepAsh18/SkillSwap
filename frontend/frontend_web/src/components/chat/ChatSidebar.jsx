@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import NewChatModal from "./NewChatModal";
 import { useChat } from "../../context/ChatContext";
+import { resolveMediaUrl } from "../../api/chat";
 
 function timeAgo(dateStr) {
   if (!dateStr) return "";
@@ -14,16 +15,16 @@ function timeAgo(dateStr) {
   return `${Math.floor(hours / 24)}d`;
 }
 
-export default function ChatSidebar({ chats, loading, activeChatId, onSelectChat }) {
+export default function ChatSidebar({ chats, loading, activeChatId, onSelectChat, onChatRemoved }) {
   const [showNewChat, setShowNewChat] = useState(false);
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-4 border-b border-slate-50">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100/80">
         <h1 className="font-display text-lg font-semibold text-slate-800">Chats</h1>
         <button
           onClick={() => setShowNewChat(true)}
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-teal-500 text-white hover:bg-teal-600 active:scale-95 transition-all"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-teal-500 text-white hover:bg-teal-600 hover:shadow-md hover:shadow-teal-500/20 active:scale-95 transition-all duration-150"
           aria-label="New chat"
         >
           <PlusIcon />
@@ -48,6 +49,7 @@ export default function ChatSidebar({ chats, loading, activeChatId, onSelectChat
                 chat={chat}
                 active={chat.id === activeChatId}
                 onClick={() => onSelectChat(chat.id)}
+                onRemoved={() => activeChatId === chat.id && onChatRemoved?.()}
               />
             ))}
           </AnimatePresence>
@@ -59,7 +61,7 @@ export default function ChatSidebar({ chats, loading, activeChatId, onSelectChat
   );
 }
 
-function ChatListItem({ chat, active, onClick }) {
+function ChatListItem({ chat, active, onClick, onRemoved }) {
   const { currentUserId, deleteChat, leaveGroup, messages: activeMessages } = useChat();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(null); // null | "delete" | "leave"
@@ -67,7 +69,7 @@ function ChatListItem({ chat, active, onClick }) {
   const isGroup = chat.type === "GROUP";
   const title = isGroup ? chat.name : chat.otherUserName;
   const avatarSrc =
-    (isGroup ? chat.avatarUrl : chat.otherUserPicture) ||
+    resolveMediaUrl(isGroup ? chat.avatarUrl : chat.otherUserPicture) ||
     `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title || "?")}`;
 
   // Live preview: the ChatDocument's cached lastMessagePreview goes stale once a
@@ -82,6 +84,10 @@ function ChatListItem({ chat, active, onClick }) {
     try {
       if (confirming === "delete") await deleteChat(chat.id);
       else if (confirming === "leave") await leaveGroup(chat.id);
+      // Instagram-style: it vanishes from the list immediately (context already
+      // strips it from `chats`), and if it was the open thread, kick the
+      // parent back to the empty state / off the now-dead route.
+      onRemoved?.();
     } catch (err) {
       console.error(err);
     } finally {
@@ -95,11 +101,16 @@ function ChatListItem({ chat, active, onClick }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, height: 0 }}
-      className={`relative group border-b border-slate-50/80 ${active ? "bg-teal-50" : "hover:bg-slate-50"}`}
+      className={`relative group border-b border-slate-50/80 transition-colors duration-150 ${active ? "bg-teal-50/70" : "hover:bg-slate-50/80"}`}
     >
+      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[3px] rounded-r-full bg-teal-500" />}
       <button onClick={onClick} className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors">
         <div className="relative flex-shrink-0">
-          <img src={avatarSrc} alt="" className="w-11 h-11 rounded-full object-cover" />
+          <img
+            src={avatarSrc}
+            alt=""
+            className="w-11 h-11 rounded-full object-cover ring-1 ring-black/5"
+          />
           {isGroup && (
             <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-700 text-white text-[9px] flex items-center justify-center font-semibold ring-2 ring-white">
               {chat.participantIds?.length ?? ""}
@@ -117,7 +128,7 @@ function ChatListItem({ chat, active, onClick }) {
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <p className="text-xs text-slate-400 truncate italic-none">{livePreview}</p>
             {chat.unreadCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-teal-500 text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0">
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-teal-500 text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0 shadow-sm shadow-teal-500/30">
                 {chat.unreadCount > 9 ? "9+" : chat.unreadCount}
               </span>
             )}
@@ -231,9 +242,9 @@ function getLivePreview(chat, activeMessages, isActiveChat) {
 
 function SkeletonList() {
   return (
-    <div className="flex flex-col gap-1 p-2">
+    <div className="flex flex-col gap-1.5 p-2">
       {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="h-16 rounded-xl bg-slate-50 animate-pulse" />
+        <div key={i} className="h-16 rounded-xl bg-slate-50 animate-pulse" style={{ animationDelay: `${i * 80}ms` }} />
       ))}
     </div>
   );

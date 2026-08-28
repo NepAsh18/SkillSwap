@@ -1,7 +1,5 @@
 package spring_swap.v2.exceptions;
 
-
-
 import org.jspecify.annotations.NullMarked;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.Instant;
 import java.util.Map;
+
 @NullMarked
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -38,6 +37,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(Map.of("error", ex.getMessage()));
+    }
+
+    /**
+     * Chat/group/message/event domain rule violations (not found, not a
+     * participant, leader-only action, group full, etc). Mapped to 400 rather
+     * than a single fixed status because ChatDomainException covers a mix of
+     * "not found" and "not allowed" cases under one type — 400 keeps it a
+     * clean, expected client error either way instead of an unhandled 500.
+     * If you want "not found" cases to come back as a real 404 specifically,
+     * that requires giving ChatDomainException a distinct subtype or a status
+     * field; happy to add that if the frontend needs to branch on 404 vs 400.
+     */
+    @ExceptionHandler(ChatDomainException.class)
+    public ResponseEntity<Object> handleChatDomain(ChatDomainException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

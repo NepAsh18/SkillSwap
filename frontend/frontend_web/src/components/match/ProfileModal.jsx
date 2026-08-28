@@ -6,6 +6,10 @@ export default function ProfileModal({ user, onClose }) {
   const {  sendRequest, cancelSentRequest, getConnectionStatus } = useConnections();
  const status = getConnectionStatus(user.userId);
 
+  const avatarSrc =
+    resolvePictureUrl(user?.picture) ||
+    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user?.name || "?")}`;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -33,7 +37,7 @@ export default function ProfileModal({ user, onClose }) {
 
           <div className="flex items-center gap-4">
             <img
-              src={ user?.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`}
+              src={avatarSrc}
               alt=""
               className="w-16 h-16 rounded-full object-cover"
             />

@@ -2,17 +2,23 @@ package spring_swap.v2.services.ai;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import spring_swap.v2.models.auth.User;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import spring_swap.v2.document.ai.BadgeEvent;
 import spring_swap.v2.document.ai.UserBadge;
+import spring_swap.v2.dtos.ai.BadgeRankingDTO;
+import spring_swap.v2.repo.auth.UserRepository;
 import spring_swap.v2.repository.ai.UserBadgeRepository;
 import spring_swap.v2.services.notification.NotificationService;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +26,9 @@ import java.util.UUID;
 public class BadgeService {
 
     private final UserBadgeRepository badgeRepo;
+    private final UserBadgeRepository userBadgeRepository;
+    private final UserRepository userRepository;
+
 
     @Lazy
     private final NotificationService notificationService;
@@ -167,5 +176,31 @@ public class BadgeService {
     }
     public List<UserBadge> getBadgesForUser(UUID userId) {
         return badgeRepo.findByUserId(userId);
+    }
+
+
+    public List<BadgeRankingDTO> getTopBadges(int limit, String skillFilter) {
+        List<UserBadge> badges = (skillFilter == null || skillFilter.isBlank())
+                ? userBadgeRepository.findTop50ByOrderByCurrentLevelDescTotalScoreDesc()
+                : userBadgeRepository.findTop50BySkillOrderByCurrentLevelDescTotalScoreDesc(skillFilter);
+
+        List<UUID> userIds = badges.stream().map(UserBadge::getUserId).distinct().toList();
+        Map<UUID, String> nameById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
+        return IntStream.range(0, Math.min(limit, badges.size()))
+                .mapToObj(i -> {
+                    UserBadge b = badges.get(i);
+                    return new BadgeRankingDTO(
+                            i + 1,
+                            b.getUserId(),
+                            nameById.getOrDefault(b.getUserId(), "Unknown"),
+                            b.getSkill(),
+                            b.getTier(),
+                            b.getCurrentLevel(),
+                            b.getTotalScore(),
+                            b.getAverageScore()
+                    );
+                })
+                .toList();
     }
 }

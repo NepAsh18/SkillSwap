@@ -25,6 +25,7 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.17.0",
     "react-toastify": "^11.1.0",
+    "recharts": "^3.10.1",
     "sockjs-client": "^1.6.1",
     "tailwindcss": "^4.2.4"
   },

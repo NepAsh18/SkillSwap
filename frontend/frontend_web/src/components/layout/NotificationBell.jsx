@@ -19,24 +19,37 @@ export default function NotificationBell() {
     chatNotifications,
     markChatNotificationRead,
     markAllChatNotificationsRead,
+    eventNotifications,
+    markEventNotifRead,
+    markAllEventNotifsRead,
     openChat,
   } = useChat();
   const [open, setOpen] = useState(false);
 
-  // Merge both sources, tag each with its origin so we know which handler to call.
-  const merged = useMemo(() => {
-    const connectionItems = notifications.map((n) => ({ ...n, kind: "connection" }));
-    const chatItems = chatNotifications.map((n) => ({ ...n, kind: "chat" }));
-    return [...connectionItems, ...chatItems].sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-    );
-  }, [notifications, chatNotifications]);
+  // Merge all three sources, tag each with its origin so we know which handler to call.
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+const merged = useMemo(() => {
+  const cutoff = Date.now() - THIRTY_DAYS_MS;
+  const withinWindow = (n) => new Date(n.createdAt).getTime() >= cutoff;
+
+  const connectionItems = notifications.filter(withinWindow).map((n) => ({ ...n, kind: "connection" }));
+  const chatItems = chatNotifications.filter(withinWindow).map((n) => ({ ...n, kind: "chat" }));
+  const eventItems = eventNotifications.filter(withinWindow).map((n) => ({ ...n, kind: "event" }));
+
+  return [...connectionItems, ...chatItems, ...eventItems].sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+  );
+}, [notifications, chatNotifications, eventNotifications]);
 
   const unreadCount = merged.filter((n) => !n.read).length;
 
   const handleClick = (n) => {
     if (n.kind === "chat") {
       if (!n.read) markChatNotificationRead(n.id);
+      if (n.chatId) openChat(n.chatId);
+    } else if (n.kind === "event") {
+      if (!n.read) markEventNotifRead(n.id);
       if (n.chatId) openChat(n.chatId);
     } else {
       if (!n.read) markNotificationRead(n.id);
@@ -46,6 +59,19 @@ export default function NotificationBell() {
   const handleMarkAllRead = () => {
     markAllNotificationsRead();
     markAllChatNotificationsRead();
+    markAllEventNotifsRead();
+  };
+
+  const badgeStyle = (kind) => {
+    if (kind === "chat") return "text-teal-600 bg-teal-50";
+    if (kind === "event") return "text-amber-600 bg-amber-50";
+    return null;
+  };
+
+  const badgeLabel = (kind) => {
+    if (kind === "chat") return "Chat";
+    if (kind === "event") return "Call";
+    return null;
   };
 
   return (
@@ -109,9 +135,9 @@ export default function NotificationBell() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-slate-700 leading-snug">{n.body}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          {n.kind === "chat" && (
-                            <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded-full">
-                              Chat
+                          {badgeLabel(n.kind) && (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${badgeStyle(n.kind)}`}>
+                              {badgeLabel(n.kind)}
                             </span>
                           )}
                           <p className="text-xs text-slate-400">{timeAgo(n.createdAt)}</p>

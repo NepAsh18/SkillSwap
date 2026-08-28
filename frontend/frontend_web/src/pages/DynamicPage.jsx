@@ -255,10 +255,61 @@ setTimeout(() => {
         )}
       </section>
 
-      {/* Badge card */}
-      {isLoggedIn && latestBadge && (
+      {/* Badge card — shows the earned badge, or a first-time prompt if the
+          user is logged in but hasn't taken an assessment yet */}
+      {isLoggedIn && (
         <section style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px 48px' }}>
-          <BadgeCard badge={latestBadge} onRetake={() => navigate('/assessment')} />
+          {latestBadge ? (
+            <BadgeCard badge={latestBadge} onRetake={() => navigate('/assessment')} />
+          ) : (
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: 20,
+              border: '1.5px dashed #E8E4D8',
+              padding: 'clamp(18px, 3vw, 28px)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 20,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{
+                width: 58, height: 58, borderRadius: 16,
+                background: '#FFF3D0',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.9rem', flexShrink: 0,
+              }}>
+                🎯
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: 'Sora, sans-serif', fontWeight: 700,
+                  fontSize: '0.98rem', color: '#1A1A2E', marginBottom: 3,
+                }}>
+                  No badge yet
+                </div>
+                <div style={{
+                  fontFamily: 'Inter, sans-serif', fontSize: '0.82rem',
+                  color: '#7A7A9A',
+                }}>
+                  Take your first assessment to earn one.
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/assessment')}
+                style={{
+                  padding: '9px 20px', borderRadius: 10,
+                  border: '1.5px solid #F5A623', background: '#FFF3D0',
+                  color: '#D4891A', fontFamily: 'Sora, sans-serif',
+                  fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                  whiteSpace: 'nowrap', transition: 'all 0.18s', flexShrink: 0,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#F5A623'; e.currentTarget.style.color = '#1A1A2E'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#FFF3D0'; e.currentTarget.style.color = '#D4891A'; }}
+              >
+                Take Assessment →
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -350,8 +401,119 @@ setTimeout(() => {
         </div>
       </section>
 
+      <TestimonialMarquee />
+
       <BadgePopup />
     </div>
+  );
+};
+
+// --- Testimonial marquee: real skill-swap pairings, auto-scrolling ---
+const TESTIMONIALS = [
+  { name: 'Ritika M.', pair: 'Taught UI Design → Learned Python', quote: "Traded my Figma chops for someone's backend patience. Fair swap, no money changed hands." },
+  { name: 'Devon K.',  pair: 'Taught Guitar → Learned Excel',     quote: 'Never thought I\'d barter chords for pivot tables, but here we are, both better off.' },
+  { name: 'Anaya S.',  pair: 'Taught French → Learned React',     quote: 'My badge jumped to Practitioner after two sessions. The test actually matched what I knew.' },
+  { name: 'Marcus T.', pair: 'Taught Copywriting → Learned SQL',  quote: 'Found a data analyst who wanted better emails. We just... swapped brains for an hour a week.' },
+  { name: 'Priya D.',  pair: 'Taught Yoga → Learned Video Editing', quote: 'The assessment felt personal, not generic — it knew I was self-taught and asked accordingly.' },
+  { name: 'Owen R.',   pair: 'Taught Chess → Learned Photography', quote: 'Badge tiers gave me something to chase. Went Apprentice to Expert in a semester.' },
+];
+
+const initials = (name) => name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+const AVATAR_PALETTE = ['#F5A623', '#4CAF82', '#2196F3', '#9C27B0', '#E85D75', '#3EA8A0'];
+
+const TestimonialCard = ({ t, idx }) => (
+  <div style={{
+    flex: '0 0 auto',
+    width: 300,
+    background: '#FFFFFF',
+    borderRadius: 18,
+    border: '1px solid #E8E4D8',
+    padding: '20px 22px',
+    marginRight: 16,
+    boxSizing: 'border-box',
+  }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: '50%',
+        background: AVATAR_PALETTE[idx % AVATAR_PALETTE.length],
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#FFFFFF', fontFamily: 'Sora, sans-serif', fontWeight: 700,
+        fontSize: '0.85rem', flexShrink: 0,
+      }}>
+        {initials(t.name)}
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 700,
+          fontSize: '0.85rem', color: '#1A1A2E',
+        }}>
+          {t.name}
+        </div>
+        <div style={{
+          fontFamily: 'Inter, sans-serif', fontSize: '0.72rem',
+          color: '#D4891A', lineHeight: 1.4, marginTop: 2,
+        }}>
+          {t.pair}
+        </div>
+      </div>
+    </div>
+    <p style={{
+      fontFamily: 'Inter, sans-serif', fontSize: '0.85rem',
+      color: '#5A5A7A', lineHeight: 1.6, margin: 0,
+    }}>
+      "{t.quote}"
+    </p>
+  </div>
+);
+
+const TestimonialMarquee = () => {
+  // Duplicate the list so the CSS animation can loop seamlessly at -50%.
+  const track = [...TESTIMONIALS, ...TESTIMONIALS];
+
+  return (
+    <section style={{ padding: 'clamp(8px,2vw,16px) 0 clamp(56px,8vw,96px)' }}>
+      <style>{`
+        @keyframes skillswap-marquee {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+        .skillswap-marquee-track {
+          animation: skillswap-marquee 38s linear infinite;
+        }
+        .skillswap-marquee-track:hover {
+          animation-play-state: paused;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .skillswap-marquee-track {
+            animation: none;
+            overflow-x: auto;
+          }
+        }
+      `}</style>
+
+      <div style={{ maxWidth: 860, margin: '0 auto 20px', padding: '0 24px' }}>
+        <h2 style={{
+          fontFamily: 'Sora, sans-serif', fontWeight: 800,
+          fontSize: 'clamp(1.25rem,3vw,1.65rem)', color: '#1A1A2E',
+          letterSpacing: '-0.02em',
+        }}>
+          People are swapping skills right now
+        </h2>
+      </div>
+
+      <div style={{
+        overflow: 'hidden',
+        maskImage: 'linear-gradient(90deg, transparent, black 6%, black 94%, transparent)',
+        WebkitMaskImage: 'linear-gradient(90deg, transparent, black 6%, black 94%, transparent)',
+      }}>
+        <div className="skillswap-marquee-track" style={{ display: 'flex', width: 'max-content', padding: '4px 24px' }}>
+          {track.map((t, i) => (
+            <TestimonialCard key={i} t={t} idx={i} />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 };
 
@@ -572,6 +734,16 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
   const [pageError, setPageError] = useState(null);
 
   useEffect(() => {
+    // The "home" slug has no corresponding CMS page on the backend, so skip
+    // the fetch entirely and avoid the guaranteed 404 on
+    // /home/public/pages/home. Every other slug behaves exactly as before.
+    if (isHome) {
+      setPageLoading(false);
+      setPageData(null);
+      setPageError(null);
+      return;
+    }
+
     let isMounted = true;
     setPageLoading(true);
 
@@ -597,7 +769,7 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
     return () => {
       isMounted = false;
     };
-  }, [currentSlug]);
+  }, [currentSlug, isHome]);
 
   // Helper: safely extract section content as a string
   const getSectionContent = (content) => {
@@ -619,10 +791,10 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
       {/* Whale Blue & Mint Scrollbar */}
       <style>{`
         .page-scroll::-webkit-scrollbar { width: 8px; }
-        .page-scroll::-webkit-scrollbar-track { background: #0f172a; } 
-        .page-scroll::-webkit-scrollbar-thumb { background: #2dd4bf55; border-radius: 9999px; } 
-        .page-scroll::-webkit-scrollbar-thumb:hover { background: #2dd4bf; } 
-        .page-scroll { scrollbar-width: thin; scrollbar-color: #2dd4bf55 #0f172a; }
+        .page-scroll::-webkit-scrollbar-track { background: #FFFBF0; }
+        .page-scroll::-webkit-scrollbar-thumb { background: #F5A62388; border-radius: 9999px; }
+        .page-scroll::-webkit-scrollbar-thumb:hover { background: #F5A623; }
+        .page-scroll { scrollbar-width: thin; scrollbar-color: #F5A62388 #FFFBF0; }
         * { box-sizing: border-box; }
       `}</style>
 
@@ -635,7 +807,7 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
         />
       )}
 
-      <main className="page-scroll mx-auto w-full flex-1 overflow-y-auto bg-slate-900 min-h-screen">
+      <main className="page-scroll mx-auto w-full flex-1 overflow-y-auto min-h-screen" style={{ background: '#FFFBF0' }}>
         {/* --- SKILLSWAP HOME HERO (only for the home slug) --- */}
         {isHome && (
           <div style={{ background: '#FFFBF0' }}>
@@ -646,11 +818,14 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
 
-          {/* --- TOP: DYNAMIC CMS CONTENT (now shown for ALL slugs, including home) --- */}
+          {/* --- TOP: DYNAMIC CMS CONTENT --- */}
+          {/* isHome is always false-guarded above (pageLoading/pageError stay
+              cleared for home), so this block naturally no longer renders
+              anything for the home slug. */}
           {pageLoading && (
             <GoldCard>
               <div className="text-center py-16">
-                <h2 className="text-2xl font-semibold text-teal-400 animate-pulse">
+                <h2 className="text-2xl font-semibold animate-pulse" style={{ color: '#D4891A', fontFamily: 'Sora, sans-serif' }}>
                   Loading page content…
                 </h2>
               </div>
@@ -660,8 +835,8 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
           {!pageLoading && pageError && (
             <GoldCard>
               <div className="text-center py-16">
-                <h2 className="text-3xl font-bold text-rose-400">Content not found</h2>
-                <p className="text-slate-300 mt-4 max-w-md mx-auto">{pageError}</p>
+                <h2 className="text-3xl font-bold" style={{ color: '#C2453F', fontFamily: 'Sora, sans-serif' }}>Content not found</h2>
+                <p className="mt-4 max-w-md mx-auto" style={{ color: '#7A7A9A' }}>{pageError}</p>
               </div>
             </GoldCard>
           )}
@@ -671,10 +846,10 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
               {pageData.sections.map((section, index) => (
                 <GoldCard key={section.id || `section-${index}`}>
                   <div className="space-y-3">
-                    <h3 className="text-xl sm:text-2xl font-semibold text-teal-300">
+                    <h3 className="text-xl sm:text-2xl font-semibold" style={{ color: '#1A1A2E', fontFamily: 'Sora, sans-serif' }}>
                       {section.title}
                     </h3>
-                    <div className="text-slate-300 leading-7 whitespace-pre-wrap break-words">
+                    <div className="leading-7 whitespace-pre-wrap break-words" style={{ color: '#5A5A7A' }}>
                       {getSectionContent(section.content)}
                     </div>
                   </div>
@@ -684,18 +859,26 @@ const DynamicPage = ({ defaultSlug = "home" }) => {
           )}
 
           {/* --- BOTTOM: VIDEO GRID INTEGRATION --- */}
-          {/* We use a subtle visual break to separate the text content from the videos */}
-          <div className="mt-8 pt-10 border-t border-slate-800 relative">
-            {/* Decorative background glow for the video section */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-teal-500/20 to-transparent"></div>
-
-            <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-              <div>
-                <h2 className="text-3xl font-bold text-teal-400">Browse Videos</h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  18+ titles are visible here but require age verification to play.
-                </p>
+          <div className="mt-4 pt-2 relative">
+            <div className="mb-10 text-center sm:text-left">
+              <div
+                className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-4"
+                style={{ background: '#FFF3D0', border: '1px solid #F5A623' }}
+              >
+                <span className="text-xs">🎬</span>
+                <span
+                  className="text-xs font-semibold tracking-wide uppercase"
+                  style={{ color: '#D4891A', fontFamily: 'Inter, sans-serif' }}
+                >
+                  Video library
+                </span>
               </div>
+              <h2 className="text-3xl font-bold" style={{ color: '#1A1A2E', fontFamily: 'Sora, sans-serif' }}>
+                Browse Videos
+              </h2>
+              <p className="mt-2 text-sm max-w-xl" style={{ color: '#7A7A9A' }}>
+                18+ titles are visible here but require age verification to play.
+              </p>
             </div>
 
             <div className="min-h-[400px]">

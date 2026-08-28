@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import spring_swap.v2.document.feedback.FeedbackDocument;
 import spring_swap.v2.dtos.feedback.FeedbackRequest;
@@ -27,10 +26,9 @@ public class FeedbackController {
     @PostMapping
     public ResponseEntity<FeedbackResponse> submitFeedback(
             @RequestBody @Valid FeedbackRequest req,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @AuthenticationPrincipal UUID currentUserId) {
 
-        UUID fromUserId = extractUserId(userDetails);
-        FeedbackResponse response = feedbackService.submitFeedback(fromUserId, req);
+        FeedbackResponse response = feedbackService.submitFeedback(currentUserId, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -43,10 +41,5 @@ public class FeedbackController {
         return ResponseEntity.ok(
                 feedbackService.getFeedbackForUserSkill(targetUserId, skill)
         );
-    }
-
-    private UUID extractUserId(UserDetails userDetails) {
-
-        return UUID.fromString(userDetails.getUsername());
     }
 }

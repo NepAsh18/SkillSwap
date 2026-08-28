@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchMyConnections } from "../../api/connections";
 import { useChat } from "../../context/ChatContext";
+import { resolveMediaUrl } from "../../api/chat";
 
 export default function AddMemberModal({ chat, onClose }) {
   const { addMember } = useChat();
@@ -43,7 +44,7 @@ export default function AddMemberModal({ chat, onClose }) {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden shadow-xl"
+          className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden shadow-xl shadow-slate-900/10"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-50">
             <div>
@@ -82,7 +83,7 @@ export default function AddMemberModal({ chat, onClose }) {
                 >
                   <img
                     src={
-                      c.otherUserPicture ||
+                      resolveMediaUrl(c.otherUserPicture) ||
                       `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(c.otherUserName || "?")}`
                     }
                     alt=""

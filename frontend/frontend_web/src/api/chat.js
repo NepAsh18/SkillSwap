@@ -1,23 +1,25 @@
 import api from './axiosInstance';
 
-// Resolves a mediaUrl returned by the backend (a relative path like
-// "/api/v1/chats/{chatId}/media/images/{uuid}.jpg") into an absolute URL
-// against the SAME host the rest of the API calls use — api.defaults.baseURL.
-// Never use message.mediaUrl directly in an <img src> or <a href>: relative
-// paths resolve against whatever origin the page is currently served from
-// (e.g. the Vite dev server on :5173), not the backend (:8080), which is
-// exactly the "localhost:5173/api/v1/..." dead-link bug.
-export const resolveMediaUrl = (mediaUrl) => {
-  if (!mediaUrl) return mediaUrl;
-  if (/^https?:\/\//i.test(mediaUrl)) return mediaUrl; // already absolute
+// Resolves ANY relative URL the backend returns (chat media under /api/v1/...,
+// or profile pictures under /uploads/...) into an absolute URL against the
+// SAME host the rest of the API calls use — api.defaults.baseURL. Never use
+// a backend-provided relative path directly in an <img src> or <a href>: it
+// resolves against whatever origin the page is currently served from (e.g.
+// the Vite dev server on :5173) instead of the actual API host, which
+// produces a dead link / broken image with a 0-byte response.
+export const resolveMediaUrl = (url) => {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url; // already absolute
 
+  // baseURL is generally either "http://host:port" or "http://host:port/api/v1".
+  // Pull out just the host+port so ANY relative path — whether it already
+  // starts with /api/v1 or is a bare path like /uploads/... — lands on the
+  // right origin without doubling any prefix.
   const base = (api.defaults.baseURL || "").replace(/\/$/, "");
-  // Backend base URLs are typically already "http://host:port/api/v1" or
-  // just "http://host:port" — mediaUrl always starts with "/api/v1/...".
-  // If base already ends in "/api/v1", strip that from mediaUrl to avoid
-  // doubling it; otherwise just concatenate as-is.
-  const path = base.endsWith("/api/v1") ? mediaUrl.replace(/^\/api\/v1/, "") : mediaUrl;
-  return `${base}${path}`;
+  const originMatch = base.match(/^(https?:\/\/[^/]+)/i);
+  const origin = originMatch ? originMatch[1] : base;
+
+  return `${origin}${url}`;
 };
 
 // Endpoints match ChatController / MessageController / MediaController:
@@ -255,12 +257,19 @@ export const fetchChatMedia = async (chatId, type, query) => {
 export const downloadChatMedia = async (mediaUrl, fileName) => {
   try {
     // mediaUrl comes back from the backend as "/api/v1/chats/{chatId}/media/...".
-    // axios's baseURL already includes "/api/v1", so passing mediaUrl straight
-    // to api.get() doubles the prefix into ".../api/v1/api/v1/...". Strip the
-    // same prefix resolveMediaUrl strips, but keep the result relative (not
-    // absolute) since api.get() needs a path, not a full URL.
+    // api.get() needs a path relative to baseURL, not an absolute URL, so this
+    // reuses resolveMediaUrl's origin-detection to find where baseURL's own
+    // "/api/v1" (if any) ends, then strips exactly that much off mediaUrl —
+    // same rule as resolveMediaUrl, just kept relative instead of absolute so
+    // it still routes through axios's configured baseURL and auth headers.
     const base = (api.defaults.baseURL || "").replace(/\/$/, "");
-    const path = base.endsWith("/api/v1") ? mediaUrl.replace(/^\/api\/v1/, "") : mediaUrl;
+    const originMatch = base.match(/^(https?:\/\/[^/]+)/i);
+    const origin = originMatch ? originMatch[1] : base;
+    const basePathPrefix = base.slice(origin.length); // e.g. "/api/v1", or ""
+
+    const path = basePathPrefix && mediaUrl.startsWith(basePathPrefix)
+      ? mediaUrl.slice(basePathPrefix.length)
+      : mediaUrl;
 
     const separator = path.includes("?") ? "&" : "?";
     const response = await api.get(`${path}${separator}download=true`, {
@@ -280,8 +289,6 @@ export const downloadChatMedia = async (mediaUrl, fileName) => {
     throw error;
   }
 };
-
-
 
 export const scheduleCall = async (chatId, { title, scheduledAt }) => {
   try {

@@ -20,6 +20,9 @@ services:
       # Appending your CORS property here so your backend knows your frontend's URL
       APP_CORS_FRONT_END_URL: http://localhost:5173
       BACKFILL_SEARCH_INDEX: "true"
+      #SMTP mail transfer
+      MAIL_USERNAME: ashutosh.neupane1234@gmail.com
+      MAIL_APP_PASSWORD: cjesyqtdrtrlrgsf
      
     networks:
       - app-net

@@ -1,21 +1,23 @@
 /**
  * pages/SignupPage.jsx
  *
- * Registration form. Same pattern as LoginPage.
- * Calls AuthService.register() — maps to Spring's RegisterRequest { name, email, password }.
- * On success: shows toast, navigates to /login automatically.
+ * Registration form. register() always returns a PreAuthResponse — no real
+ * tokens are issued at registration time. Opens OtpVerificationModal; on
+ * successful verification, useOtpFlow redirects straight into the app.
  */
 
 import { useOutletContext }    from "react-router-dom";
-import { useNavigate }        from "react-router-dom";
 import { useForm }            from "react-hook-form";
 import { motion }             from "framer-motion";
 import toast                  from "react-hot-toast";
 import FloatingLabelInput     from "../components/ui/FloatingLabelInput";
 import PasswordInput          from "../components/ui/PasswordInput";
 import GoogleIcon             from "../components/ui/GoogleIcon";
-import { register as apiRegister } from "../api/authService";
+import OtpVerificationModal   from "../components/auth/OtpVerificationModal";
+import { register as apiRegister, resendOtp } from "../api/authService";
 import { VALIDATION }         from "../constants/validation";
+import { getFriendlyAuthError } from "../utils/authErrorMessages";
+import { useOtpFlow } from "../hooks/useOtpFlow";
 
 const SUBMIT_LABEL = {
   idle:    "Create account",
@@ -33,7 +35,7 @@ const SUBMIT_CLASS = {
 
 export default function SignupPage() {
   const { fieldProps, triggerSubmit, submitState, onSwitch } = useOutletContext();
-  const navigate = useNavigate();
+  const otpFlow = useOtpFlow();
 
   const {
     register,
@@ -48,11 +50,17 @@ export default function SignupPage() {
   async function onValid({ name, email, password }) {
     await triggerSubmit(async () => {
       try {
-        await apiRegister({ name, email, password });
-        toast.success("Account created! Please log in.");
-        setTimeout(() => navigate(ROUTES.LOGIN), 1200);
+        const data = await apiRegister({ name, email, password });
+
+        toast(data.message || "Enter the verification code we emailed you.");
+        otpFlow.open({
+          preAuthToken: data.preAuthToken,
+          expiresInSeconds: data.expiresInSeconds,
+          message: data.message,
+          resend: () => resendOtp({ preAuthToken: data.preAuthToken }),
+        });
       } catch (err) {
-        toast.error(err.message ?? "Registration failed. Please try again.");
+        toast.error(getFriendlyAuthError(err));
         throw err;
       }
     });
@@ -60,7 +68,6 @@ export default function SignupPage() {
 
   return (
     <>
-      {/* Logo mark */}
       <div className="flex justify-end mb-6 text-xl font-bold text-gray-900 tracking-tight">
         ✦
       </div>
@@ -72,7 +79,6 @@ export default function SignupPage() {
 
       <form onSubmit={handleSubmit(onValid)} noValidate className="flex flex-col gap-4">
 
-        {/* Full name */}
         <FloatingLabelInput
           label="Full name"
           type="text"
@@ -82,7 +88,6 @@ export default function SignupPage() {
           onBlur={(e)  => { nameReg.onBlur(e); fieldProps("name").onBlur(e); }}
         />
 
-        {/* Email */}
         <FloatingLabelInput
           label="Email"
           type="email"
@@ -92,7 +97,6 @@ export default function SignupPage() {
           onBlur={(e)  => { emailReg.onBlur(e); fieldProps("email").onBlur(e); }}
         />
 
-        {/* Password */}
         <PasswordInput
           error={errors.password?.message}
           {...pwReg}
@@ -100,7 +104,6 @@ export default function SignupPage() {
           onBlur={(e)  => { pwReg.onBlur(e); fieldProps("password").onBlur(e); }}
         />
 
-        {/* Terms note */}
         <p className="text-xs text-gray-400 leading-relaxed">
           By signing up you agree to our{" "}
           <button type="button" className="font-medium text-gray-600 hover:underline">Terms of Service</button>
@@ -108,7 +111,6 @@ export default function SignupPage() {
           <button type="button" className="font-medium text-gray-600 hover:underline">Privacy Policy</button>.
         </p>
 
-        {/* Submit */}
         <motion.button
           type="submit"
           disabled={submitState === "loading"}
@@ -122,14 +124,12 @@ export default function SignupPage() {
           {SUBMIT_LABEL[submitState]}
         </motion.button>
 
-        {/* Divider */}
         <div className="flex items-center gap-3 my-1">
           <div className="flex-1 h-px bg-gray-100" />
           <span className="text-xs text-gray-300 font-medium">or</span>
           <div className="flex-1 h-px bg-gray-100" />
         </div>
 
-        {/* Google */}
         <button
           type="button"
           className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-gray-200 bg-white py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-gray-50 active:scale-[0.98]"
@@ -139,7 +139,6 @@ export default function SignupPage() {
         </button>
       </form>
 
-      {/* Switch to Login */}
       <p className="mt-7 text-center text-xs text-gray-400">
         Already have an account?{" "}
         <button
@@ -150,6 +149,8 @@ export default function SignupPage() {
           Log in
         </button>
       </p>
+
+      <OtpVerificationModal {...otpFlow.modalProps} />
     </>
   );
 }

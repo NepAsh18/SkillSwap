@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../context/ChatContext";
+import { resolveMediaUrl } from "../../api/chat";
 import MessageBubble from "./MessageBubble";
 import MessageComposer from "./MessageComposer";
 import AddMemberModal from "./AddMemberModal";
@@ -43,7 +44,7 @@ export default function ChatThread({ chatId, onBack }) {
   const isLeader = isGroup && chat?.leaderId === currentUserId;
   const title = isGroup ? chat?.name : chat?.otherUserName;
   const avatarSrc =
-    (isGroup ? chat?.avatarUrl : chat?.otherUserPicture) ||
+    resolveMediaUrl(isGroup ? chat?.avatarUrl : chat?.otherUserPicture) ||
     `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title || "?")}`;
 
   const typingNames = Object.entries(typingUsers)
@@ -96,11 +97,11 @@ export default function ChatThread({ chatId, onBack }) {
 
   return (
     <div className="flex-1 flex flex-col h-full relative">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 flex-shrink-0">
-        <button onClick={onBack} className="sm:hidden text-slate-400 hover:text-slate-600">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100/80 flex-shrink-0">
+        <button onClick={onBack} className="sm:hidden text-slate-400 hover:text-slate-600 transition-colors">
           <BackIcon />
         </button>
-        <img src={avatarSrc} alt="" className="w-9 h-9 rounded-full object-cover" />
+        <img src={avatarSrc} alt="" className="w-9 h-9 rounded-full object-cover ring-1 ring-black/5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-800 truncate">{title || "Loading…"}</p>
           {typingNames.length > 0 ? (
@@ -114,7 +115,7 @@ export default function ChatThread({ chatId, onBack }) {
 
         <button
           onClick={() => setFilesOpen(true)}
-          className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 active:scale-95 transition-all duration-150"
           title="Shared files"
         >
           <FilesIcon />
@@ -123,7 +124,7 @@ export default function ChatThread({ chatId, onBack }) {
         {(!isGroup || isLeader) && (
           <button
             onClick={() => setShowScheduleModal(true)}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 active:scale-95 transition-all duration-150"
             title="Schedule a call"
           >
             <CalendarIcon />
@@ -133,7 +134,7 @@ export default function ChatThread({ chatId, onBack }) {
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-600 active:scale-95 transition-all duration-150"
             aria-label="Chat options"
           >
             <DotsIcon />
@@ -142,7 +143,7 @@ export default function ChatThread({ chatId, onBack }) {
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-slate-100 rounded-xl shadow-lg overflow-hidden w-48">
+              <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-900/[0.06] overflow-hidden w-48">
                 {isLeader && (
                   <button
                     onClick={() => {
@@ -189,7 +190,7 @@ export default function ChatThread({ chatId, onBack }) {
         onOpenCall={(event) => setActiveCallEvent(event)}
       />
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2.5">
         {messages.length === 0 ? (
           <p className="text-sm text-slate-400 text-center mt-10">No messages yet — say hello 👋</p>
         ) : (
@@ -262,7 +263,7 @@ export default function ChatThread({ chatId, onBack }) {
 function ConfirmDialog({ title, body, confirmLabel, onCancel, onConfirm }) {
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl shadow-slate-900/10">
         <p className="text-sm font-semibold text-slate-800">{title}</p>
         <p className="text-sm text-slate-500 mt-1.5">{body}</p>
         <div className="flex items-center justify-end gap-2 mt-5">

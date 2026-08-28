@@ -146,6 +146,7 @@ public class VideoUploadServiceImpl implements VideoUploadService {
             }
 
             video.setHlsBasePath(outputDir.toString());
+            generateThumbnail(video, rawFilePath, outputDir);
             video.setProcessingStatus(VideoProcessingStatus.READY);
             log.info("HLS processing complete [uuid={}]", video.getVideoUuid());
 
@@ -158,6 +159,33 @@ public class VideoUploadServiceImpl implements VideoUploadService {
             videoRepository.save(video);
             Thread.currentThread().interrupt();
             throw new RuntimeException("ffmpeg interrupted for video " + video.getVideoUuid(), e);
+        }
+    }
+
+    private void generateThumbnail(Video video, Path rawFilePath, Path outputDir) {
+        Path thumbPath = outputDir.resolve("thumbnail.jpg");
+        String cmd = String.format(
+                "ffmpeg -y -i \"%s\" -ss 00:00:02 -vframes 1 -vf \"scale=640:-1\" \"%s\"",
+                rawFilePath.toAbsolutePath(),
+                thumbPath.toAbsolutePath()
+        );
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-c", cmd);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String logs = new String(process.getInputStream().readAllBytes());
+            int exitCode = process.waitFor();
+
+            if (exitCode == 0 && Files.exists(thumbPath)) {
+                video.setThumbnailPath(thumbPath.toString());
+                log.info("Thumbnail generated [uuid={}]", video.getVideoUuid());
+            } else {
+                log.warn("Thumbnail generation failed [uuid={}, exitCode={}]\n{}",
+                        video.getVideoUuid(), exitCode, logs);
+            }
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.warn("Thumbnail generation error [uuid={}]", video.getVideoUuid(), e);
         }
     }
 
@@ -195,15 +223,31 @@ public class VideoUploadServiceImpl implements VideoUploadService {
     @Override
     public VideoStreamResponseDTO getStreamInfo(UUID videoUuid) {
         Video video = findByUuidOrThrow(videoUuid);
-        String masterUrl = video.getProcessingStatus() == VideoProcessingStatus.READY
-                ? "/api/v1/videos/" + videoUuid + "/master.m3u8"
+        boolean ready = video.getProcessingStatus() == VideoProcessingStatus.READY;
+
+        String masterUrl = ready ? "/api/v1/videos/" + videoUuid + "/master.m3u8" : null;
+        String thumbnailUrl = video.getThumbnailPath() != null
+                ? "/api/v1/videos/" + videoUuid + "/thumbnail.jpg"
                 : null;
+        List<VideoQualityDTO> qualities = ready ? buildQualityList(videoUuid) : List.of();
+
         return new VideoStreamResponseDTO(
                 video.getVideoUuid(),
                 video.getTitle(),
                 masterUrl,
+                thumbnailUrl,
+                qualities,
                 video.is18Plus(),
                 video.getProcessingStatus().name()
+        );
+    }
+
+    private List<VideoQualityDTO> buildQualityList(UUID videoUuid) {
+        // Fixed mapping from the ffmpeg -var_stream_map: v:0=1080p, v:1=720p, v:2=360p
+        return List.of(
+                new VideoQualityDTO(1080, "1080p", "/api/v1/videos/" + videoUuid + "/v0/prog_index.m3u8"),
+                new VideoQualityDTO(720,  "720p",  "/api/v1/videos/" + videoUuid + "/v1/prog_index.m3u8"),
+                new VideoQualityDTO(360,  "360p",  "/api/v1/videos/" + videoUuid + "/v2/prog_index.m3u8")
         );
     }
 
@@ -300,6 +344,9 @@ public class VideoUploadServiceImpl implements VideoUploadService {
                 v.getDescription(),
                 v.getProcessingStatus() == VideoProcessingStatus.READY
                         ? "/api/v1/videos/" + v.getVideoUuid() + "/master.m3u8"
+                        : null,
+                v.getThumbnailPath() != null
+                        ? "/api/v1/videos/" + v.getVideoUuid() + "/thumbnail.jpg"
                         : null,
                 v.getDurationSecs(),
                 v.is18Plus()

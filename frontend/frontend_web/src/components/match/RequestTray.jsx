@@ -25,7 +25,7 @@ export default function RequestTray() {
             <img
               src={resolvePictureUrl(req.user.picture) || `https://api.dicebear.com/7.x/initials/svg?seed=${req.user.name}`}
               alt=""
-              className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+              className="w-9 h-9 rounded-full object-cover flex-shrink-0 ring-1 ring-ink/5"
             />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-ink truncate">{req.user.name}</p>
@@ -34,7 +34,7 @@ export default function RequestTray() {
             <div className="flex gap-1.5 flex-shrink-0">
               <button
                 onClick={() => acceptIncoming(req.id)}
-                className="text-xs font-semibold text-surface bg-teach px-2.5 py-1.5 rounded-lg hover:bg-teach/90 transition-colors"
+                className="text-xs font-semibold text-surface bg-teach px-2.5 py-1.5 rounded-lg hover:bg-teach/90 active:scale-95 transition-all"
               >
                 Accept
               </button>

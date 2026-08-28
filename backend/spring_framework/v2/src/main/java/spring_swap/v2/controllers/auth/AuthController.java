@@ -11,10 +11,14 @@ import org.springframework.web.bind.annotation.*;
 import spring_swap.v2.dtos.auth.LoginRequest;
 import spring_swap.v2.dtos.auth.RegisterRequest;
 import spring_swap.v2.dtos.auth.AuthResponse;
-import spring_swap.v2.dtos.auth.ProfileResponse;
+import spring_swap.v2.dtos.auth.PreAuthResponse;
+import spring_swap.v2.dtos.auth.VerifyOtpRequest;
+import spring_swap.v2.dtos.auth.ResendOtpRequest;
+import spring_swap.v2.models.auth.User;
 import spring_swap.v2.services.auth.AuthService;
 import spring_swap.v2.security.CookieService;
 import spring_swap.v2.exceptions.InvalidCredentialsException;
+import spring_swap.v2.exceptions.OtpRequiredException;
 import spring_swap.v2.security.jwtImpl.JwtService;
 
 import java.util.Arrays;
@@ -27,22 +31,59 @@ public class AuthController {
 
     private final AuthService authService;
     private final CookieService cookieService;
-    private final JwtService jwtService; // Needed to read TTL configuration safely
+    private final JwtService jwtService;
 
     @PostMapping("/register")
-    public ResponseEntity<ProfileResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return new ResponseEntity<>(authService.register(request), HttpStatus.CREATED);
+    public ResponseEntity<PreAuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        User savedUser = authService.register(request);
+        String preAuthToken = jwtService.generatePreAuthToken(savedUser, "REGISTER");
+
+        PreAuthResponse response = PreAuthResponse.builder()
+                .preAuthToken(preAuthToken)
+                .message("Verification code sent to your email.")
+                .expiresInSeconds(jwtService.getPreAuthTtlSeconds())
+                .build();
+
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(
+    public ResponseEntity<?> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
 
-        // 1. Delegate core authentication and DB entity state management to AuthService
-        AuthResponse authResponse = authService.login(request);
+        try {
+            AuthResponse authResponse = authService.login(request);
 
-        // 2. Intercept the refresh token string out of the payload to attach via HttpOnly cookie
+            cookieService.attachRefreshCookie(
+                    response,
+                    authResponse.getRefreshToken(),
+                    (int) jwtService.getRefreshTtlSeconds()
+            );
+            cookieService.addNoStoreHeaders(response);
+
+            return ResponseEntity.ok(authResponse);
+
+        } catch (OtpRequiredException otpRequired) {
+            PreAuthResponse preAuthResponse = PreAuthResponse.builder()
+                    .preAuthToken(otpRequired.getPreAuthToken())
+                    .message("Verification code sent to your email.")
+                    .expiresInSeconds(otpRequired.getExpiresInSeconds())
+                    .build();
+            return ResponseEntity.ok(preAuthResponse);
+        }
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<AuthResponse> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request,
+            HttpServletResponse response) {
+
+        AuthResponse authResponse = authService.verifyOtpAndIssueTokens(
+                request.getPreAuthToken(),
+                request.getCode()
+        );
+
         cookieService.attachRefreshCookie(
                 response,
                 authResponse.getRefreshToken(),
@@ -50,8 +91,20 @@ public class AuthController {
         );
         cookieService.addNoStoreHeaders(response);
 
-        // 3. Return the payload safely back to client application memory
         return ResponseEntity.ok(authResponse);
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<PreAuthResponse> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        AuthService.PreAuthBundle bundle = authService.resendOtp(request.getPreAuthToken());
+
+        PreAuthResponse response = PreAuthResponse.builder()
+                .preAuthToken(bundle.preAuthToken())
+                .message("A new verification code has been sent to your email.")
+                .expiresInSeconds(bundle.expiresInSeconds())
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/refresh")
@@ -59,14 +112,11 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response) {
 
-        // 1. Extract the raw token safely from the incoming cookie state
         String rawRefreshToken = readRefreshTokenFromCookie(request)
                 .orElseThrow(() -> new InvalidCredentialsException("Refresh token is missing from secure storage context."));
 
-        // 2. Ask AuthService to validate, verify breach rotation, and produce the replacement nodes
         AuthResponse rotatedResponse = authService.refresh(rawRefreshToken);
 
-        // 3. Bind the newly rotated refresh token back down to the user's browser cookie
         cookieService.attachRefreshCookie(
                 response,
                 rotatedResponse.getRefreshToken(),
@@ -79,17 +129,11 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-        // Optional: If you want to mark the token as revoked in the database during logout,
-        // you can extract it and pass it to a service method like: authService.logout(token);
-
         cookieService.clearRefreshCookie(response);
         cookieService.addNoStoreHeaders(response);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Helper method isolated purely to controller layer to pluck tracking context.
-     */
     private Optional<String> readRefreshTokenFromCookie(HttpServletRequest request) {
         if (request.getCookies() == null) {
             return Optional.empty();

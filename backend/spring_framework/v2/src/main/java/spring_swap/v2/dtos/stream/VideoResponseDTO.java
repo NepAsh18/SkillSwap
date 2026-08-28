@@ -7,6 +7,7 @@ public record VideoResponseDTO(
         String title,
         String description,
         String videoUrl,
+        String thumbnailUrl,
         Integer durationSecs,
         boolean is18Plus
 ) {}

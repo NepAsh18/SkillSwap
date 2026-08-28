@@ -87,4 +87,7 @@ public class User {
     void onUpdate() {
         updatedAt = Instant.now();
     }
+
+
+    private Instant lastOtpVerifiedAt;
 }

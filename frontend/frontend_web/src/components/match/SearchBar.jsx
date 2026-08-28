@@ -40,7 +40,7 @@ export default function SearchBar({ onSearch }) {
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
           placeholder="Search skills, people, anything you want to learn…"
-          className="w-full bg-surface text-ink placeholder:text-muted rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-learn"
+          className="w-full bg-surface text-ink placeholder:text-muted rounded-xl px-4 py-3 text-sm font-medium shadow-sm shadow-black/10 focus:outline-none focus:ring-2 focus:ring-learn transition-shadow"
         />
       </form>
 
@@ -50,6 +50,7 @@ export default function SearchBar({ onSearch }) {
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
             className="absolute mt-1 w-full bg-surface rounded-xl shadow-xl shadow-black/30 overflow-hidden z-30"
           >
             {suggestions.map((s) => (

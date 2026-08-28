@@ -17,9 +17,30 @@ export default function CallBanner({ chatId, currentUserId, isLeader, isGroup, o
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
+    // Guard against a missing/stale chatId — e.g. the brief window between a
+    // delete/leave succeeding and the parent navigating away, or this banner
+    // mounting before a real chat id is available. Previously this fired
+    // fetchScheduledEvents(chatId) unconditionally, which surfaced as an
+    // unhandled 500 ("Chat not found") whenever the chat no longer existed.
+    if (!chatId) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+
     fetchScheduledEvents(chatId)
       .then((data) => setEvents(data.filter((e) => e.status === "SCHEDULED" || e.status === "STARTED")))
-      .catch(console.error)
+      .catch((err) => {
+        // A deleted/left chat surfaces here as a domain rejection from the
+        // backend (400, now that ChatDomainException is mapped cleanly) —
+        // that's not a real error for this banner, just "nothing to show".
+        // Anything else still gets logged.
+        const status = err?.response?.status;
+        if (status !== 400 && status !== 404) {
+          console.error(err);
+        }
+        setEvents([]);
+      })
       .finally(() => setLoading(false));
   }, [chatId]);
 
